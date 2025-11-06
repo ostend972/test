@@ -37,7 +37,10 @@
       "Bash(fi)",
       "Bash(if [ -d \"build\" ])",
       "Bash(then rm -rf build)",
-      "Bash(del \"dist\\CalmWeb_Fr_Installer.exe\")"
+      "Bash(del \"dist\\CalmWeb_Fr_Installer.exe\")",
+      "Bash(git commit:*)",
+      "Bash(gh release create:*)",
+      "WebFetch(domain:api.github.com)"
     ],
     "deny": [],
     "ask": []

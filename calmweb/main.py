@@ -83,6 +83,35 @@ def run_calmweb():
     except Exception as e:
         log(f"Warning: Could not initialize lifetime stats: {e}")
 
+    # Initialiser le système de mise à jour automatique
+    try:
+        from .utils.app_updater import app_updater
+        app_updater.start_auto_check()
+
+        # Vérification immédiate au démarrage (en arrière-plan)
+        import threading
+        def startup_update_check():
+            try:
+                if app_updater.should_check_at_startup():
+                    log("🔍 Checking for updates at startup...")
+                    if app_updater.check_for_updates():
+                        if app_updater._available_version and app_updater._is_newer_version(app_updater._available_version):
+                            log(f"🆕 Update available at startup: {app_updater._available_version}")
+                            app_updater.download_and_install_update()
+                        else:
+                            log("✅ Application is up to date at startup")
+                else:
+                    log("⏰ Startup update check skipped (recent check already done)")
+            except Exception as e:
+                log(f"Startup update check failed: {e}")
+
+        startup_thread = threading.Thread(target=startup_update_check, daemon=True)
+        startup_thread.start()
+
+        log("App auto-updater initialized with startup check")
+    except Exception as e:
+        log(f"Warning: Could not initialize app updater: {e}")
+
     try:
         resolver = BlocklistResolver(get_blocklist_urls(), RELOAD_INTERVAL)
         current_resolver = resolver

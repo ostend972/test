@@ -19,7 +19,7 @@ if exist "build" rmdir /s /q "build"
 
 echo.
 echo [3/4] Construction de l'executable avec PyInstaller...
-pyinstaller CalmWeb_Final.spec
+pyinstaller CalmWeb_Fr.spec
 if errorlevel 1 (
     echo ERREUR: Construction de l'executable echouee
     pause

@@ -29,7 +29,15 @@
       "Bash(cmd /c:*)",
       "Bash(./uninstall_calmweb.bat)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:docs.github.com)"
+      "WebFetch(domain:docs.github.com)",
+      "Bash(git remote set-url:*)",
+      "Bash(build.bat)",
+      "Bash(if [ -d \"dist\" ])",
+      "Bash(then rm -rf dist)",
+      "Bash(fi)",
+      "Bash(if [ -d \"build\" ])",
+      "Bash(then rm -rf build)",
+      "Bash(del \"dist\\CalmWeb_Fr_Installer.exe\")"
     ],
     "deny": [],
     "ask": []

@@ -11,7 +11,7 @@ from collections import deque
 import threading
 
 # Version
-CALMWEB_VERSION = "1.1.0"
+CALMWEB_VERSION = "1.0.0"
 
 # Blocklist and whitelist URLs
 BLOCKLIST_URLS = []  # Will be populated by get_blocklist_urls()

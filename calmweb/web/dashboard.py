@@ -22,6 +22,10 @@ from .api_settings_handlers import handle_protection_toggle, handle_settings_api
 from .api_domains_handlers import handle_domains_api
 from .api_blocklists_handlers import handle_blocklists_api
 from .api_update_handlers import handle_update_api
+from .api_app_update_handlers import (
+    handle_app_update_status, handle_app_update_check,
+    handle_app_update_install, handle_app_update_settings
+)
 from .templates import get_dashboard_html
 
 # Global variables
@@ -84,6 +88,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             elif self.path.startswith('/api/update/'):
                 # Auto-update management
                 handle_update_api(self)
+            elif self.path == '/api/app-update/check':
+                # App update check
+                handle_app_update_check(self)
+            elif self.path == '/api/app-update/install':
+                # App update install
+                handle_app_update_install(self)
+            elif self.path == '/api/app-update/settings':
+                # App update settings
+                handle_app_update_settings(self)
             else:
                 self.send_error(404, "Endpoint not found")
 
@@ -137,6 +150,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             elif self.path.startswith('/api/update/'):
                 # Auto-update status
                 handle_update_api(self)
+
+            elif self.path == '/api/app-update/status':
+                # App update status
+                handle_app_update_status(self)
+
+            elif self.path == '/api/app-update/settings':
+                # App update settings
+                handle_app_update_settings(self)
 
             # React app routes
             elif self.path == '/' or self.path == '/index.html' or self.path.startswith('/?'):

@@ -124,6 +124,34 @@ function createWindow(minimized = false) {
 
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
 
+  // ═══════════════════════════════════════════════════════
+  // GESTION DE L'ARRÊT SYSTÈME WINDOWS (session-end)
+  // ═══════════════════════════════════════════════════════
+  // Intercepte WM_ENDSESSION pour désactiver le proxy lors de l'arrêt Windows
+  mainWindow.on('session-end', (event, reasons) => {
+    log('═══════════════════════════════════════════════════');
+    log(`⚠ SESSION-END DÉTECTÉ - Raisons: ${reasons.join(', ')}`);
+    log('═══════════════════════════════════════════════════');
+
+    try {
+      const { execSync } = require('child_process');
+
+      // Désactivation SYNCHRONE du proxy (CRITIQUE - doit être rapide)
+      log('Désactivation du proxy système...');
+      execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 1500 });
+      execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 1500 });
+      execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 1500 });
+
+      log('✓ Proxy désactivé avec succès lors de session-end');
+    } catch (error) {
+      log(`✗ Erreur désactivation proxy (session-end): ${error.message}`);
+    }
+
+    log('✓ Nettoyage terminé - Autorisation de l\'arrêt');
+  });
+
+  log('✓ Gestionnaire session-end Windows activé');
+
   // Ouvrir DevTools pour debugging (commenté pour production)
   // mainWindow.webContents.openDevTools();
 

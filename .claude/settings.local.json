@@ -209,7 +209,12 @@
       "Bash(cmd /c \"findstr /C:\"urlhaus-download\" \"%APPDATA%calmwebblocklist_cache.txt\" | head -3\")",
       "Bash(git tag:*)",
       "Bash(\"dist/CalmWeb Setup 1.0.12.exe\" )",
-      "Bash(\"dist/CalmWeb Setup 1.0.12.exe.blockmap\" )"
+      "Bash(\"dist/CalmWeb Setup 1.0.12.exe.blockmap\" )",
+      "Bash(\"dist/CalmWeb Setup 1.0.13.exe\" )",
+      "Bash(\"dist/CalmWeb Setup 1.0.13.exe.blockmap\" )",
+      "Bash(\"dist/latest.yml\" )",
+      "WebSearch",
+      "WebFetch(domain:www.electronjs.org)"
     ],
     "deny": [],
     "ask": []

@@ -1,6 +1,6 @@
 # Changelog - CalmWeb
 
-> **🚀 Version stable recommandée : 1.0.13**
+> **🚀 Version stable recommandée : 1.0.14**
 >
 > Application de protection web complète avec proxy de filtrage et mises à jour automatiques silencieuses.
 
@@ -8,7 +8,33 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 
 ---
 
-## [1.0.13] - 2025-11-11 🔥 VERSION CRITIQUE - FIX PROXY
+## [1.0.14] - 2025-11-11 ✅ FIX DÉFINITIF - Session-End Event
+
+**Statut** : Fix définitif du proxy résiduel - Utilisation de l'événement Windows natif
+
+### 🐛 Correctif Définitif
+- **Fix définitif proxy résiduel avec session-end** : Utilisation de l'événement Windows natif WM_ENDSESSION
+  - Problème v1.0.13 : `powerMonitor.on('shutdown')` n'est pas fiable sous Windows (ne se déclenche pas)
+  - Solution : Utilisation de `mainWindow.on('session-end')` qui intercepte **WM_ENDSESSION**
+  - WM_ENDSESSION est le vrai message Windows d'arrêt système, bien plus fiable
+  - Le proxy est désactivé **AVANT** l'arrêt de Windows de manière garantie
+  - Code : `main.js:131-151` (gestionnaire session-end sur BrowserWindow)
+  - Documentation Electron : WindowSessionEndEvent avec raisons (shutdown, logoff, close-app, critical)
+
+### 🔧 Détails techniques
+- **Événement natif Windows** : `session-end` correspond à WM_ENDSESSION (message système)
+- **Désactivation synchrone** : netsh + registry en 1.5s max
+- **Triple nettoyage** : WinHTTP + ProxyEnable + ProxyServer
+- **Logs avec raisons** : Affiche pourquoi la session se termine (shutdown/logoff/etc.)
+- **Plus fiable** : Contrairement à `powerMonitor.shutdown` qui est buggé sous Windows
+
+### 📋 Différences avec v1.0.13
+- **v1.0.13** : Utilisait `powerMonitor.on('shutdown')` → ❌ Ne fonctionne pas sous Windows
+- **v1.0.14** : Utilise `mainWindow.on('session-end')` → ✅ Fonctionne sous Windows (WM_ENDSESSION natif)
+
+---
+
+## [1.0.13] - 2025-11-11 🔥 VERSION CRITIQUE - FIX PROXY (DÉFECTUEUX)
 
 **Statut** : Version critique - Fix du proxy résiduel lors de l'arrêt/redémarrage de Windows
 

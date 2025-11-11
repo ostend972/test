@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Content Security Policy pour protéger contre XSS et injections -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://aistudiocdn.com;
+      style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com;
+      font-src 'self' data:;
+      img-src 'self' data: https:;
+      connect-src 'self';
+      frame-src 'none';
+      object-src 'none';
+      base-uri 'self';
+      form-action 'self';
+      upgrade-insecure-requests;
+    ">
+
+    <!-- Permissions Policy pour limiter les fonctionnalités -->
+    <meta http-equiv="Permissions-Policy" content="
+      camera=(),
+      microphone=(),
+      geolocation=(),
+      payment=(),
+      usb=(),
+      serial=(),
+      midi=()
+    ">
+
+    <title>CalmWeb Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                DEFAULT: '#2563EB', // Bleu confiance
+                'hover': '#1D4ED8',
+              },
+              success: {
+                DEFAULT: '#10B981', // Vert validation
+              },
+              danger: {
+                DEFAULT: '#EF4444', // Rouge alerte
+                'hover': '#DC2626',
+              },
+              warning: {
+                DEFAULT: '#F59E0B', // Orange attention
+              },
+              background: '#FFFFFF', // Fond blanc pur
+              'text-main': '#111827', // Noir contraste
+              'text-subtle': '#6B7280',
+              'border-color': '#E5E7EB',
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+            },
+            borderRadius: {
+              'lg': '0.5rem',
+            }
+          },
+        },
+      };
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@tanstack/react-query": "https://aistudiocdn.com/@tanstack/react-query@^5.90.7",
+    "zustand": "https://aistudiocdn.com/zustand@^5.0.8",
+    "socket.io-client": "https://aistudiocdn.com/socket.io-client@^4.8.1",
+    "recharts": "https://aistudiocdn.com/recharts@^2.12.7"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-50 text-text-main">
+    <div id="root"></div>
+    <script type="module" src="./index.jsx"></script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+{
+  "name": "calmweb",
+  "version": "1.0.7",
+  "description": "Application de protection web complète avec proxy de filtrage, blocage de sites malveillants, arnaques et publicités. Protège les utilisateurs contre le phishing, malware et logiciels de contrôle à distance.",
+  "main": "main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ostend972/test.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "pack": "electron-builder --dir",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:security": "jest backend/__tests__/security-validation.test.js backend/__tests__/command-injection.test.js"
+  },
+  "build": {
+    "appId": "com.calmweb.app",
+    "productName": "CalmWeb",
+    "directories": {
+      "output": "dist"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "ostend972",
+      "repo": "test",
+      "releaseType": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "icon.ico",
+      "icon.png",
+      "logo.png",
+      "dist/**/*",
+      "*.tsx",
+      "*.ts",
+      "*.jsx",
+      "*.css",
+      "backend/**/*",
+      "components/**/*",
+      "services/**/*",
+      "stores/**/*",
+      "hooks/**/*",
+      "node_modules/electron-updater/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "icon.ico",
+      "requestedExecutionLevel": "requireAdministrator",
+      "signingHashAlgorithms": []
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CalmWeb",
+      "include": "installer.nsh",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "license": "LICENSE.txt",
+      "warningsAsErrors": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "runAfterFinish": true
+    }
+  },
+  "keywords": [
+    "proxy",
+    "firewall",
+    "security",
+    "web-filter",
+    "malware-protection",
+    "ad-blocker",
+    "parental-control"
+  ],
+  "author": "CalmWeb Team",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.7",
+    "electron-updater": "^6.1.7",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "^3.3.0",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.13.3",
+    "jest": "^30.2.0",
+    "vite": "^7.2.2"
+  }
+}

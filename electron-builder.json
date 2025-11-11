@@ -1,0 +1,46 @@
+{
+  "appId": "com.calmweb.app",
+  "productName": "CalmWeb",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "icon.ico",
+    "logo.png",
+    "dist/index.html",
+    "dist/assets/**/*",
+    "backend/**/*",
+    "!backend/**/*.test.js",
+    "!backend/**/*.spec.js"
+  ],
+  "win": {
+    "target": [
+      "nsis"
+    ],
+    "icon": "icon.ico",
+    "requestedExecutionLevel": "requireAdministrator"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "CalmWeb",
+    "include": "installer.nsh",
+    "installerIcon": "icon.ico",
+    "uninstallerIcon": "icon.ico",
+    "license": "LICENSE.txt",
+    "warningsAsErrors": false,
+    "perMachine": true,
+    "allowElevation": true,
+    "runAfterFinish": false,
+    "displayLanguageSelector": false,
+    "installerLanguages": ["fr_FR"],
+    "language": "2060",
+    "deleteAppDataOnUninstall": false,
+    "differentialPackage": true,
+    "packElevateHelper": true
+  }
+}

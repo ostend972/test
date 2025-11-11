@@ -1,0 +1,117 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+dist-ssr/
+out/
+build/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+chromewebdata-*.log
+log*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.local
+
+# Electron specific
+# Keep installer.nsh for NSIS configuration
+dist/win-unpacked/
+dist/linux-unpacked/
+dist/mac/
+dist/builder-debug.yml
+dist/builder-effective-config.yaml
+
+# Release files (keep in releases only)
+release-v*.json
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.blockmap
+latest*.yml
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.parcel-cache/
+.vite/
+.npm/
+.yarn/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.code-workspace
+
+# OS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+desktop.ini
+$RECYCLE.BIN/
+
+# Screenshots and images (except icons)
+*.png
+!icon.png
+!logo.png
+!icon.ico
+
+# PowerShell scripts temporaires
+start-admin.ps1
+create-release.ps1
+
+# Documentation temporaire (garder seulement les principaux)
+BLOCKLIST_IMPROVEMENTS.md
+STATUS_IMPLEMENTATION.md
+TOUTES_LES_REGLES_DE_BLOCAGE.md
+DEV-NOTES.md
+DEMARRAGE.md
+AUTO_UPDATE_SYSTEM.md
+README_CALMWEB.md
+
+# Metadata
+metadata.json
+
+# Test files
+test-*.js
+!jest.config.js
+
+# Backup files
+*.backup
+main.js.backup

@@ -1,10 +1,39 @@
 # Changelog - CalmWeb
 
-> **🚀 Version stable recommandée : 1.0.12**
+> **🚀 Version stable recommandée : 1.0.13**
 >
 > Application de protection web complète avec proxy de filtrage et mises à jour automatiques silencieuses.
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier selon le format [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
+
+---
+
+## [1.0.13] - 2025-11-11 🔥 VERSION CRITIQUE - FIX PROXY
+
+**Statut** : Version critique - Fix du proxy résiduel lors de l'arrêt/redémarrage de Windows
+
+### 🐛 Correctif Critique
+- **Fix proxy résiduel lors de l'arrêt système** : Le proxy reste désormais désactivé après redémarrage
+  - Problème : Lors d'un arrêt/redémarrage Windows, le proxy CalmWeb restait actif
+  - Conséquence : Blocage de la connexion internet au redémarrage sans CalmWeb actif
+  - Solution : Gestionnaire d'événement `powerMonitor.on('shutdown')` ajouté
+  - Le proxy est maintenant désactivé **AVANT** l'arrêt complet du système
+  - Désactivation synchrone (netsh + registry) en 2 secondes max
+  - Code : `main.js:359-384` (gestionnaire d'arrêt système Windows)
+  - Log détaillé dans `calmweb-startup.log`
+
+### 🔧 Améliorations techniques
+- **Gestion de l'arrêt système** : `powerMonitor.on('shutdown')` intercepte l'arrêt Windows
+- **Désactivation tripartite** : Nettoie WinHTTP + Registry (ProxyEnable) + Registry (ProxyServer)
+- **Timeout de sécurité** : 2 secondes max pour éviter de bloquer l'arrêt système
+- **event.preventDefault()** : Empêche l'arrêt immédiat le temps du nettoyage
+- **Gestion de la mise en veille** : Le proxy est conservé lors d'une mise en veille
+
+### 📋 Comportement attendu
+- **Arrêt normal** : Proxy désactivé via `before-quit` (déjà existant)
+- **Arrêt/Redémarrage Windows** : Proxy désactivé via `powerMonitor.shutdown` (nouveau)
+- **Crash/Kill forcé** : Nettoyage au prochain démarrage via proxy résiduel detection
+- **Mise en veille** : Proxy conservé (l'utilisateur reprend la session)
 
 ---
 

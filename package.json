@@ -1,6 +1,6 @@
 {
   "name": "calmweb",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Application de protection web complète avec proxy de filtrage, blocage de sites malveillants, arnaques et publicités. Protège les utilisateurs contre le phishing, malware et logiciels de contrôle à distance.",
   "main": "main.js",
   "repository": {

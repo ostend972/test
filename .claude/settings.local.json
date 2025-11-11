@@ -206,7 +206,10 @@
       "Bash(Select-Object Name, Length, LastWriteTime\"\")",
       "Bash(cmd /c \"powershell (Get-Content ''%APPDATA%\\calmweb\\blocklist_cache.txt'').Count\")",
       "Bash(cmd /c \"find /c /v \"\"\"\" \"%APPDATA%calmwebblocklist_cache.txt\"\")",
-      "Bash(cmd /c \"findstr /C:\"urlhaus-download\" \"%APPDATA%calmwebblocklist_cache.txt\" | head -3\")"
+      "Bash(cmd /c \"findstr /C:\"urlhaus-download\" \"%APPDATA%calmwebblocklist_cache.txt\" | head -3\")",
+      "Bash(git tag:*)",
+      "Bash(\"dist/CalmWeb Setup 1.0.12.exe\" )",
+      "Bash(\"dist/CalmWeb Setup 1.0.12.exe.blockmap\" )"
     ],
     "deny": [],
     "ask": []

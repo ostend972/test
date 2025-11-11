@@ -352,6 +352,46 @@ app.whenReady().then(async () => {
 
     console.log('Backend initialisé et démarré');
 
+    // ═══════════════════════════════════════════════════════
+    // GESTIONNAIRE D'ARRÊT SYSTÈME WINDOWS
+    // ═══════════════════════════════════════════════════════
+    // Désactive le proxy AVANT l'arrêt/redémarrage de Windows
+    powerMonitor.on('shutdown', (event) => {
+      log('═══════════════════════════════════════════════════');
+      log('⚠ ARRÊT SYSTÈME DÉTECTÉ - Désactivation du proxy...');
+      log('═══════════════════════════════════════════════════');
+
+      // Empêcher l'arrêt immédiat pour avoir le temps de désactiver le proxy
+      event.preventDefault();
+
+      try {
+        const { execSync } = require('child_process');
+
+        // Désactivation SYNCHRONE du proxy (critique)
+        execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 2000 });
+        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 2000 });
+        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 2000 });
+
+        log('✓ Proxy désactivé avec succès avant arrêt système');
+      } catch (error) {
+        log(`✗ Erreur désactivation proxy: ${error.message}`);
+      }
+
+      log('✓ Nettoyage terminé - Autorisation de l\'arrêt système');
+
+      // Permettre l'arrêt de continuer
+      app.quit();
+    });
+
+    // Aussi gérer la mise en veille (certains systèmes)
+    powerMonitor.on('suspend', () => {
+      log('⚠ Mise en veille détectée - Conservation du proxy');
+      // On ne désactive PAS le proxy en mise en veille,
+      // car l'utilisateur reviendra sur le même système
+    });
+
+    log('✓ Gestionnaire d\'arrêt système Windows activé');
+
     // Récupérer les gestionnaires
     const managers = backend.getManagers();
     const { config, whitelist, blocklist, proxy, system, logger } = managers;

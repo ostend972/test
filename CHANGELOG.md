@@ -1,10 +1,137 @@
 # Changelog - CalmWeb
 
-> **🚀 Version de lancement officielle : 1.0.7**
+> **🚀 Version stable recommandée : 1.0.12**
 >
 > Application de protection web complète avec proxy de filtrage et mises à jour automatiques silencieuses.
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier selon le format [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/).
+
+---
+
+## [1.0.12] - 2025-11-11 ✅ VERSION STABLE
+
+**Statut** : Version stable - Community Blocklist intégrée + nouvelle source URLhaus CSV
+
+### ✨ Nouveau
+- **Bouton de mise à jour manuelle** : Force le téléchargement immédiat de toutes les blocklists
+  - Accessible depuis la page Paramètres, section "Sources de Protection"
+  - Télécharge instantanément les 514,649+ domaines de toutes les sources activées
+  - IPC handler : `main.js:692-707` (forceBlocklistUpdate)
+  - API : `services/api.js:69`, `preload.js:285-288`
+  - UI : `components/Settings/SettingsPage.jsx:266-284`
+  - Retour visuel : Spinner de chargement + message de succès/erreur
+
+- **URLhaus Recent (CSV)** : Nouvelle source de blocage en temps réel
+  - URL : `https://urlhaus.abuse.ch/downloads/csv_recent/`
+  - Format : CSV avec parsing avancé (colonnes URL et statut)
+  - Filtrage : Uniquement les URLs avec statut "online"
+  - Extraction automatique des domaines depuis les URLs complètes
+  - Mise à jour : Données récentes, URLs malveillantes actives
+  - Parser CSV personnalisé : `utils.js:282-332` (parseCSVLine, extractDomainFromURL)
+
+### 🔧 Modifications
+- **Community Blocklist intégrée** : La CalmWeb Community Blocklist est maintenant liée au bouton "Bloquer TeamViewer / AnyDesk"
+  - Plus besoin de l'activer séparément dans les sources de protection
+  - Activée/désactivée automatiquement avec l'option "Bloquer TeamViewer / AnyDesk"
+  - Contient : Arnaques françaises, sites malveillants FR, et domaines de remote desktop supplémentaires
+  - Fichier : `blocklist-manager.js:299-337`
+  - Configuration : `config-manager.js:63` (communityBlocklistURL)
+
+### ✨ Améliorations
+- **Parser CSV avancé** : Gestion des guillemets doubles, filtrage par colonne, extraction de domaines
+- **Label plus clair** : "Bloquer TeamViewer / AnyDesk + Community Blocklist"
+- **Description améliorée** : Indique clairement que cette option charge aussi la blocklist communautaire
+- **Logs détaillés** : Affiche le nombre de domaines hardcodés vs Community Blocklist
+- **Gestion intelligente** : La Community Blocklist se télécharge uniquement si blockRemoteDesktop est activé
+
+### 📋 Sources de protection (6 principales + 1 conditionnelle)
+1. URLhaus (Malware & Phishing - Format Hosts)
+2. **URLhaus Recent (URLs Malveillantes Actives - CSV)** 🆕
+3. Phishing Army (Sites de Phishing)
+4. HaGeZi Ultimate (Protection Maximale)
+5. StevenBlack/hosts (Malware, Ads)
+6. EasyList FR (Publicités Françaises)
+7. **Community Blocklist** (conditionnelle - activée avec blockRemoteDesktop)
+
+---
+
+## [1.0.11] - 2025-11-11 ✅ VERSION STABLE
+
+**Statut** : Version stable avec nouvelle blocklist et correction proxy
+
+### ✨ Nouveau
+- **Blocklist Communautaire CalmWeb** : Ajout d'une nouvelle source de blocage spécialisée
+  - Source : `https://raw.githubusercontent.com/Tontonjo/calmweb/refs/heads/main/filters/blocklist.txt`
+  - Focus : Arnaques françaises et sites malveillants ciblant la France
+  - Priorité : 2 (mise à jour rapide après URLhaus et Phishing Army)
+  - Format : Liste simple (domaines uniquement)
+  - Configuration : Activée par défaut dans les nouvelles installations
+  - Interface : Visible dans Paramètres > Sources de Protection
+
+### 🐛 Corrigé
+- **Amélioration désactivation du proxy** : Renforcement de la v1.0.10
+  - Désactivation **synchrone** du proxy dans `before-quit` (en plus de `shutdown`)
+  - Triple protection au lieu de simple (WinHTTP + ProxyEnable + ProxyServer)
+  - Nettoyage automatique du proxy résiduel au démarrage de CalmWeb
+  - Vérification et nettoyage si un proxy 127.0.0.1:8081 est détecté au démarrage
+  - **Solution définitive** : Le proxy est garanti désactivé, même en cas d'arrêt forcé
+  - Timeout réduit à 3 secondes pour une réponse plus rapide
+
+### 🔧 Améliorations
+- Ordre des sources optimisé par priorité (URLhaus → Phishing Army → CalmWeb Community → HaGeZi → StevenBlack → EasyList FR)
+- Noms des sources plus explicites dans l'interface utilisateur
+- Tous les noms de sources maintenant visibles dans les paramètres
+- Logs plus détaillés pour le diagnostic du proxy
+
+---
+
+## [1.0.10] - 2025-11-11 ✅ VERSION STABLE
+
+**Statut** : Version stable avec correction arrêt système
+
+### 🐛 Corrigé
+- **Désactivation du proxy lors de l'arrêt du PC** : Le proxy est maintenant correctement désactivé quand Windows s'éteint
+  - Renforcement de la détection de l'événement `shutdown` dans `main.js:1037-1083`
+  - Triple protection : WinHTTP + Registre IE/Edge (ProxyEnable) + Nettoyage ProxyServer
+  - Logs détaillés avec compteur de succès/erreurs
+  - Timeout réduit à 3 secondes pour une désactivation rapide
+  - **Résultat** : Au redémarrage du PC, aucun proxy actif = connexion Internet normale
+  - CalmWeb réactive automatiquement le proxy au démarrage de l'application
+
+### ✨ Améliorations
+- Protection contre les problèmes de connexion après redémarrage
+- Rapport détaillé de la désactivation du proxy dans les logs
+- Exécution synchrone garantissant la désactivation avant l'arrêt du système
+
+---
+
+## [1.0.9] - 2025-11-11 ✅ VERSION STABLE
+
+**Statut** : Version stable avec correction warning
+
+### 🐛 Corrigé
+- **Warning AutoUpdater supprimé** : Ajout de `disableWebInstaller: true`
+  - Suppression du warning "disableWebInstaller is set to false"
+  - Configuration dans `backend/updater.js:31`
+  - Amélioration de la clarté des logs de mise à jour
+
+---
+
+## [1.0.8] - 2025-11-11 ✅ VERSION STABLE
+
+**Statut** : Version stable avec améliorations logging
+
+### 🐛 Corrigé
+- **Réduction du bruit dans les logs** : Suppression des messages d'erreur bénignes
+  - Ajout de `ENOTFOUND` (domaine inexistant) aux erreurs ignorées
+  - Ajout de `ECANCELED` (opération annulée) aux erreurs ignorées
+  - Les logs techniques n'affichent plus d'erreurs normales du proxy
+  - Amélioration dans `backend/proxy-server.js` (lignes 220-289)
+
+### ✨ Améliorations
+- Logging plus propre et pertinent
+- Seules les vraies erreurs sont maintenant affichées
+- Meilleure expérience pour le diagnostic
 
 ---
 

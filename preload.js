@@ -282,6 +282,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return secureInvoke('repairSystem');
   },
 
+  forceBlocklistUpdate: async () => {
+    console.info('[Security] Manual blocklist update requested');
+    return secureInvoke('forceBlocklistUpdate');
+  },
+
   // ═══════════════════════════════════════════════════════
   // Update Actions
   // ═══════════════════════════════════════════════════════

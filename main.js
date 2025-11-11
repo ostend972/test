@@ -325,6 +325,27 @@ app.whenReady().then(async () => {
     await backend.initialize();
     log('Backend initialisé');
 
+    // NETTOYAGE DU PROXY AU DÉMARRAGE
+    // Si un proxy résiduel est actif (suite à un arrêt forcé), le nettoyer AVANT de démarrer
+    log('Vérification du proxy résiduel...');
+    try {
+      const { execSync } = require('child_process');
+      const proxyCheck = execSync('netsh winhttp show proxy', { windowsHide: true, encoding: 'utf-8' });
+
+      // Si un proxy autre que CalmWeb est configuré, ou si CalmWeb était actif mais pas lancé
+      if (proxyCheck.includes('127.0.0.1:8081') || proxyCheck.includes('localhost:8081')) {
+        log('⚠ Proxy résiduel détecté - nettoyage...');
+        execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 3000 });
+        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 3000 });
+        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 3000 });
+        log('✓ Proxy résiduel nettoyé');
+      } else {
+        log('✓ Aucun proxy résiduel détecté');
+      }
+    } catch (cleanupError) {
+      log(`⚠ Erreur vérification proxy: ${cleanupError.message}`);
+    }
+
     log('Démarrage du backend...');
     await backend.start();
     log('Backend démarré');
@@ -668,6 +689,23 @@ app.whenReady().then(async () => {
       }
     });
 
+    ipcMain.handle('forceBlocklistUpdate', async () => {
+      try {
+        logger.info('═══════════════════════════════════════════════════');
+        logger.info('   Mise à jour manuelle des blocklists...');
+        logger.info('═══════════════════════════════════════════════════');
+
+        const { blocklist } = backend.getManagers();
+        await blocklist.downloadAndUpdate();
+
+        logger.info('✓ Mise à jour manuelle terminée');
+        return { success: true, message: 'Blocklists mises à jour avec succès' };
+      } catch (error) {
+        logger.error(`Erreur mise à jour manuelle: ${error.message}`);
+        return { success: false, message: error.message };
+      }
+    });
+
     ipcMain.handle('updateConfig', validateIpc(
       { updates: 'config' },
       async (event, { updates }) => {
@@ -976,10 +1014,21 @@ app.on('before-quit', async (event) => {
       log('═══════════════════════════════════════════════════');
       log('Fermeture de l\'application...');
 
-      // Arrêter le backend (désactive proxy et firewall)
+      // DÉSACTIVATION SYNCHRONE DU PROXY EN PREMIER (prioritaire)
+      // Ceci garantit que le proxy est désactivé même si l'app est tuée rapidement
+      const { execSync } = require('child_process');
+      try {
+        execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 3000 });
+        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 3000 });
+        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 3000 });
+        log('✓ Proxy désactivé (mode synchrone prioritaire)');
+      } catch (syncError) {
+        log(`⚠ Erreur désactivation synchrone: ${syncError.message}`);
+      }
+
+      // Arrêter le backend proprement (async)
       await backend.stop();
       log('✓ Backend arrêté proprement');
-      log('✓ Proxy système désactivé');
       log('═══════════════════════════════════════════════════');
     } catch (error) {
       log(`✗ Erreur arrêt: ${error.message}`);
@@ -990,6 +1039,7 @@ app.on('before-quit', async (event) => {
         const { execSync } = require('child_process');
         execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 5000 });
         execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 5000 });
+        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 5000 });
         log('✓ Proxy désactivé (mode récupération)');
       } catch (fallbackError) {
         log(`✗ Échec désactivation proxy: ${fallbackError.message}`);
@@ -1031,19 +1081,55 @@ app.whenReady().then(() => {
   });
 
   // Désactiver le proxy avant l'arrêt du système
-  // Note: sur Windows, shutdown event n'est pas toujours fiable
-  // On compte sur before-quit pour la désactivation principale
+  // IMPORTANT: Quand Windows s'éteint, cet événement est déclenché
+  // On doit désactiver le proxy de manière SYNCHRONE car on a seulement quelques secondes
+  // Sinon, le proxy reste actif après le redémarrage et bloque tout le trafic
   powerMonitor.on('shutdown', (event) => {
-    log('Événement shutdown détecté - désactivation du proxy...');
-    // Tentative de désactivation synchrone du proxy via registre
+    log('═══════════════════════════════════════════════════');
+    log('⚠ ARRÊT DU SYSTÈME DÉTECTÉ');
+    log('Désactivation d\'urgence du proxy système...');
+
+    const { execSync } = require('child_process');
+    let successCount = 0;
+    let errorCount = 0;
+
+    // 1. Désactiver le proxy WinHTTP (utilisé par Windows et beaucoup d'applications)
     try {
-      const { execSync } = require('child_process');
-      execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 5000 });
-      execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 5000 });
-      log('✓ Proxy désactivé (mode synchrone)');
+      execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 3000 });
+      log('  ✓ Proxy WinHTTP désactivé');
+      successCount++;
     } catch (error) {
-      log(`⚠ Erreur désactivation proxy shutdown: ${error.message}`);
+      log(`  ✗ Erreur proxy WinHTTP: ${error.message}`);
+      errorCount++;
     }
+
+    // 2. Désactiver le proxy Internet Explorer/Edge (clé ProxyEnable)
+    try {
+      execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 3000 });
+      log('  ✓ Proxy IE/Edge désactivé (ProxyEnable=0)');
+      successCount++;
+    } catch (error) {
+      log(`  ✗ Erreur ProxyEnable: ${error.message}`);
+      errorCount++;
+    }
+
+    // 3. Nettoyer la valeur ProxyServer dans le registre
+    try {
+      execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 3000 });
+      log('  ✓ ProxyServer nettoyé');
+      successCount++;
+    } catch (error) {
+      log(`  ✗ Erreur ProxyServer: ${error.message}`);
+      errorCount++;
+    }
+
+    // Rapport final
+    if (errorCount === 0) {
+      log('✓ PROXY DÉSACTIVÉ AVEC SUCCÈS');
+    } else {
+      log(`⚠ DÉSACTIVATION PARTIELLE: ${successCount} succès, ${errorCount} erreur(s)`);
+    }
+    log('═══════════════════════════════════════════════════');
   });
 });
 

@@ -66,6 +66,7 @@ export const getTopBlockedDomains = async () => window.electronAPI.getTopBlocked
 export const getProtectionStatusDetails = async () => window.electronAPI.getProtectionStatusDetails();
 export const getSystemIntegrityStatus = async () => window.electronAPI.getSystemIntegrityStatus();
 export const repairSystem = async () => window.electronAPI.repairSystem();
+export const forceBlocklistUpdate = async () => window.electronAPI.forceBlocklistUpdate();
 
 // --- UPDATE API ---
 export const checkForUpdates = async () => window.electronAPI.checkForUpdates();

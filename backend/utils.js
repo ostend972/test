@@ -252,6 +252,86 @@ function parseSimpleListLine(line) {
 }
 
 /**
+ * Extrait le domaine depuis une URL complète
+ * @param {string} url - URL complète (ex: http://example.com:8080/path)
+ * @returns {string|null} Le domaine ou null
+ */
+function extractDomainFromURL(url) {
+  try {
+    if (!url) return null;
+
+    // Ajouter le protocole si manquant pour permettre le parsing
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'http://' + url;
+    }
+
+    const urlObj = new URL(url);
+    return cleanDomain(urlObj.hostname);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Parse une ligne CSV URLhaus avec gestion des guillemets
+ * Format: "id","dateadded","url","url_status",...
+ * @param {string} line - Ligne CSV
+ * @param {string} statusFilter - Statut à filtrer (ex: "online", null pour tout)
+ * @returns {string|null} Le domaine extrait ou null
+ */
+function parseCSVLine(line, statusFilter = 'online') {
+  try {
+    if (!line) return null;
+
+    const trimmed = line.trim();
+
+    // Ignorer les commentaires
+    if (trimmed.startsWith('#') || trimmed === '') return null;
+
+    // Ignorer la ligne d'en-tête
+    if (trimmed.startsWith('"id",')) return null;
+
+    // Parser le CSV avec guillemets doubles
+    const columns = [];
+    let currentColumn = '';
+    let insideQuotes = false;
+
+    for (let i = 0; i < trimmed.length; i++) {
+      const char = trimmed[i];
+
+      if (char === '"') {
+        insideQuotes = !insideQuotes;
+      } else if (char === ',' && !insideQuotes) {
+        columns.push(currentColumn);
+        currentColumn = '';
+      } else {
+        currentColumn += char;
+      }
+    }
+    // Ajouter la dernière colonne
+    columns.push(currentColumn);
+
+    // Vérifier qu'on a au moins 4 colonnes
+    if (columns.length < 4) return null;
+
+    // Colonne 3 (index 2) = URL
+    // Colonne 4 (index 3) = Status
+    const url = columns[2];
+    const status = columns[3];
+
+    // Filtrer par statut si demandé
+    if (statusFilter && status !== statusFilter) {
+      return null;
+    }
+
+    // Extraire le domaine de l'URL
+    return extractDomainFromURL(url);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
  * Delay async
  * @param {number} ms
  * @returns {Promise<void>}
@@ -297,6 +377,8 @@ module.exports = {
   cleanDomain,
   parseHostsLine,
   parseSimpleListLine,
+  extractDomainFromURL,
+  parseCSVLine,
   delay,
   retryWithBackoff
 };

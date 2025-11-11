@@ -28,6 +28,7 @@ class UpdateManager {
     autoUpdater.autoDownload = true; // Télécharger automatiquement
     autoUpdater.autoInstallOnAppQuit = true; // Installer automatiquement à la fermeture
     autoUpdater.allowDowngrade = false; // Ne pas downgrader
+    autoUpdater.disableWebInstaller = true; // Pas d'installateur web
 
     // Logs
     autoUpdater.logger = {

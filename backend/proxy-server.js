@@ -123,26 +123,30 @@ class ProxyServer {
         clientRes.writeHead(proxyRes.statusCode, proxyRes.headers);
 
         // Pipe la réponse
+        const benignPipeErrors = ['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ECANCELED'];
         const resPipe = proxyRes.pipe(clientRes);
         resPipe.on('error', (error) => {
           // Ignorer les erreurs bénignes de connexion fermée
-          if (!['ECONNRESET', 'ECONNABORTED', 'EPIPE'].includes(error.code)) {
+          if (!benignPipeErrors.includes(error.code)) {
             logger.warn(`Erreur pipe réponse HTTP: ${error.message}`);
           }
         });
 
         // Gérer les erreurs de la réponse
+        const benignErrors = ['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ETIMEDOUT', 'ENOTFOUND', 'ECANCELED'];
         proxyRes.on('error', (error) => {
-          if (!['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ETIMEDOUT'].includes(error.code)) {
+          if (!benignErrors.includes(error.code)) {
             logger.error(`Erreur réponse HTTP depuis ${hostname}: ${error.message}`);
           }
         });
       });
 
       // Gérer les erreurs
+      const benignErrors = ['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ETIMEDOUT', 'ENOTFOUND', 'ECANCELED'];
+
       proxyReq.on('error', (error) => {
         // Ne logger que les erreurs importantes
-        if (!['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ETIMEDOUT'].includes(error.code)) {
+        if (!benignErrors.includes(error.code)) {
           logger.error(`Erreur requête HTTP vers ${hostname}: ${error.message}`);
         }
         if (!clientRes.headersSent) {
@@ -153,17 +157,18 @@ class ProxyServer {
 
       clientReq.on('error', (error) => {
         // Ne logger que les erreurs importantes
-        if (!['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ETIMEDOUT'].includes(error.code)) {
+        if (!benignErrors.includes(error.code)) {
           logger.error(`Erreur requête client HTTP: ${error.message}`);
         }
         proxyReq.destroy();
       });
 
       // Pipe la requête
+      const benignPipeErrors = ['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ECANCELED'];
       const reqPipe = clientReq.pipe(proxyReq);
       reqPipe.on('error', (error) => {
         // Ignorer les erreurs bénignes de connexion fermée
-        if (!['ECONNRESET', 'ECONNABORTED', 'EPIPE'].includes(error.code)) {
+        if (!benignPipeErrors.includes(error.code)) {
           logger.warn(`Erreur pipe requête HTTP: ${error.message}`);
         }
       });
@@ -218,8 +223,17 @@ class ProxyServer {
 
       // Gérer les erreurs de connexion
       serverSocket.on('error', (error) => {
-        // Ne logger que les erreurs importantes (pas ECONNRESET/ECONNABORTED qui sont normales)
-        if (!['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ETIMEDOUT'].includes(error.code)) {
+        // Erreurs bénignes normales à ignorer
+        const benignErrors = [
+          'ECONNRESET',    // Connexion fermée par le pair
+          'ECONNABORTED',  // Connexion annulée
+          'EPIPE',         // Pipe cassé
+          'ETIMEDOUT',     // Timeout
+          'ENOTFOUND',     // Domaine inexistant
+          'ECANCELED'      // Opération annulée
+        ];
+
+        if (!benignErrors.includes(error.code)) {
           logger.error(`Erreur connexion HTTPS vers ${hostname}: ${error.message}`);
         }
         if (!clientSocket.destroyed) {
@@ -228,8 +242,17 @@ class ProxyServer {
       });
 
       clientSocket.on('error', (error) => {
-        // Ne logger que les erreurs importantes
-        if (!['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ETIMEDOUT'].includes(error.code)) {
+        // Erreurs bénignes normales à ignorer
+        const benignErrors = [
+          'ECONNRESET',
+          'ECONNABORTED',
+          'EPIPE',
+          'ETIMEDOUT',
+          'ENOTFOUND',
+          'ECANCELED'
+        ];
+
+        if (!benignErrors.includes(error.code)) {
           logger.error(`Erreur socket client pour ${hostname}: ${error.message}`);
         }
         if (!serverSocket.destroyed) {
@@ -257,14 +280,16 @@ class ProxyServer {
     const serverPipe = serverSocket.pipe(clientSocket);
 
     // Gérer les erreurs de pipe (erreurs bénignes ignorées)
+    const benignPipeErrors = ['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ECANCELED'];
+
     clientPipe.on('error', (error) => {
-      if (!['ECONNRESET', 'ECONNABORTED', 'EPIPE'].includes(error.code)) {
+      if (!benignPipeErrors.includes(error.code)) {
         logger.warn(`Erreur pipe client->server HTTPS: ${error.message}`);
       }
     });
 
     serverPipe.on('error', (error) => {
-      if (!['ECONNRESET', 'ECONNABORTED', 'EPIPE'].includes(error.code)) {
+      if (!benignPipeErrors.includes(error.code)) {
         logger.warn(`Erreur pipe server->client HTTPS: ${error.message}`);
       }
     });

@@ -2,7 +2,7 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs').promises;
 const path = require('path');
-const { cleanDomain, parseHostsLine, parseSimpleListLine, retryWithBackoff } = require('./utils');
+const { cleanDomain, parseHostsLine, parseSimpleListLine, parseCSVLine, retryWithBackoff } = require('./utils');
 const logger = require('./logger');
 
 /**
@@ -24,10 +24,12 @@ class BlocklistManager {
     // Métadonnées pour chaque liste (date de MAJ, âge, statut)
     this.listMetadata = {
       urlhaus: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 1 },
+      urlhausRecent: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 1 },
       phishingArmy: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 1 },
       hageziUltimate: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 2 },
       stevenBlack: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 3 },
       easylistFR: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 4 },
+      communityBlocklist: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 5 },
     };
   }
 
@@ -295,11 +297,44 @@ class BlocklistManager {
 
       logger.info('');
 
-      // Ajouter les domaines de remote desktop (TeamViewer, AnyDesk, etc.)
+      // Ajouter les domaines de remote desktop (TeamViewer, AnyDesk, etc.) + Community Blocklist
       if (this.configManager.getValue('blockRemoteDesktop', false)) {
+        // 1. Domaines hardcodés (TeamViewer, AnyDesk, etc.)
         const remoteDesktopDomains = this.getRemoteDesktopDomains();
         remoteDesktopDomains.forEach(d => allDomains.add(d));
-        logger.info(`🚫 Domaines remote desktop ajoutés: ${remoteDesktopDomains.length}`);
+        logger.info(`🚫 Domaines remote desktop hardcodés ajoutés: ${remoteDesktopDomains.length}`);
+
+        // 2. Community Blocklist (arnaques et remote desktop FR)
+        try {
+          logger.info(`⬇️  Community Blocklist: Téléchargement...`);
+          const communityURL = this.configManager.getValue('communityBlocklistURL');
+
+          if (communityURL) {
+            const communityDomains = await retryWithBackoff(
+              () => this.downloadBlocklist(communityURL, 'simple'),
+              3,
+              2000
+            );
+
+            const beforeCount = allDomains.size;
+            communityDomains.forEach(d => allDomains.add(d));
+            const added = allDomains.size - beforeCount;
+
+            // Mettre à jour les métadonnées
+            this.listMetadata.communityBlocklist.lastUpdate = new Date();
+            this.listMetadata.communityBlocklist.domainCount = communityDomains.size;
+            this.listMetadata.communityBlocklist.status = 'success';
+
+            logger.info(`   ✓ Community Blocklist: ${communityDomains.size.toLocaleString()} domaines (${added.toLocaleString()} nouveaux)`);
+          }
+        } catch (error) {
+          logger.error(`   ✗ Community Blocklist: ${error.message}`);
+          this.listMetadata.communityBlocklist.status = 'error';
+        }
+      } else {
+        // Si blockRemoteDesktop est désactivé, marquer la community blocklist comme inactive
+        this.listMetadata.communityBlocklist.status = 'inactive';
+        logger.info('⊘ Blocage remote desktop désactivé (Community Blocklist non chargée)');
       }
 
       // Mettre à jour la blocklist
@@ -359,6 +394,9 @@ class BlocklistManager {
                 domain = parseHostsLine(line);
               } else if (format === 'simple') {
                 domain = parseSimpleListLine(line);
+              } else if (format === 'csv') {
+                // Format CSV avec filtrage sur statut "online"
+                domain = parseCSVLine(line, 'online');
               }
 
               if (domain && domain.length > 0) {

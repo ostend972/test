@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getConfig, updateConfig, getSystemIntegrityStatus, repairSystem } from '../../services/api.js';
+import { getConfig, updateConfig, getSystemIntegrityStatus, repairSystem, forceBlocklistUpdate } from '../../services/api.js';
 import { Card } from '../ui/Card.jsx';
 import { Button } from '../ui/Button.jsx';
 import { ToggleSwitch } from '../ui/ToggleSwitch.jsx';
@@ -28,10 +28,12 @@ const SystemStatusIcon = ({ status }) => {
 };
 
 const blocklistSourceNames = {
+    'urlhaus': 'URLhaus (Malware & Phishing - abuse.ch)',
+    'urlhausRecent': 'URLhaus Recent (URLs Malveillantes Actives - CSV)',
+    'phishingArmy': 'Phishing Army (Sites de Phishing)',
+    'hageziUltimate': 'Hagezi Ultimate (Protection Maximale)',
     'stevenBlack': 'StevenBlack/hosts (Malware, Ads)',
     'easylistFR': 'Easylist FR (Publicités Françaises)',
-    'hageziUltimate': 'Hagezi Ultimate (Protection Maximale)',
-    'redFlagDomains': 'Red Flag Domains (Domaines Dangereux)',
 };
 
 export const SettingsPage = () => {
@@ -57,6 +59,8 @@ export const SettingsPage = () => {
   const [successMessage, setSuccessMessage] = React.useState('');
   const [errorMessage, setErrorMessage] = React.useState('');
   const [saveSuccess, setSaveSuccess] = React.useState(false);
+  const [isUpdatingBlocklists, setIsUpdatingBlocklists] = React.useState(false);
+  const [updateBlocklistMessage, setUpdateBlocklistMessage] = React.useState('');
 
   const mutation = useMutation({
     mutationFn: updateConfig,
@@ -139,6 +143,22 @@ export const SettingsPage = () => {
     },
   });
 
+  const forceUpdateMutation = useMutation({
+    mutationFn: forceBlocklistUpdate,
+    onSuccess: (result) => {
+      if (result.success) {
+        setUpdateBlocklistMessage('✓ Blocklists mises à jour avec succès !');
+      } else {
+        setUpdateBlocklistMessage(`⚠ Erreur: ${result.message}`);
+      }
+      setTimeout(() => setUpdateBlocklistMessage(''), 5000);
+    },
+    onError: (error) => {
+      setUpdateBlocklistMessage(`✗ Erreur: ${error.message}`);
+      setTimeout(() => setUpdateBlocklistMessage(''), 5000);
+    },
+  });
+
   const handleToggleChange = (key, value) => {
     setFormState(prev => ({ ...prev, [key]: value }));
   };
@@ -210,11 +230,11 @@ export const SettingsPage = () => {
                 <p className="text-sm text-text-subtle -mt-2 ml-4">Force l'utilisation de connexions sécurisées HTTPS en bloquant le trafic HTTP non chiffré.</p>
                  <ToggleSwitch
                   id="blockRemoteDesktop"
-                  label="Bloquer TeamViewer / AnyDesk"
+                  label="Bloquer TeamViewer / AnyDesk + Community Blocklist"
                   checked={formState.blockRemoteDesktop ?? false}
                   onChange={(checked) => handleToggleChange('blockRemoteDesktop', checked)}
                 />
-                <p className="text-sm text-text-subtle -mt-2 ml-4">Bloque les logiciels de prise de contrôle à distance pour prévenir les arnaques.</p>
+                <p className="text-sm text-text-subtle -mt-2 ml-4">Bloque les logiciels de prise de contrôle à distance (TeamViewer, AnyDesk, LogMeIn, etc.) + charge la Community Blocklist (arnaques françaises et sites malveillants FR).</p>
 
                 <div className="border-t border-border-color my-4"></div>
                 <ToggleSwitch
@@ -242,6 +262,26 @@ export const SettingsPage = () => {
                     />
                 ))}
             </div>
+
+            <div className="mt-4 flex items-center justify-between p-4 bg-surface-light rounded-lg border border-border-color">
+              <div>
+                <p className="text-sm font-medium text-text-main">Forcer la mise à jour des blocklists</p>
+                <p className="text-xs text-text-subtle mt-1">Télécharge immédiatement toutes les sources de blocage activées</p>
+              </div>
+              <Button
+                onClick={() => forceUpdateMutation.mutate()}
+                isLoading={forceUpdateMutation.isPending}
+                variant="secondary"
+                className="ml-4"
+              >
+                {forceUpdateMutation.isPending ? 'Mise à jour...' : 'Mettre à jour'}
+              </Button>
+            </div>
+            {updateBlocklistMessage && (
+              <p className={`text-sm mt-2 ${updateBlocklistMessage.includes('✓') ? 'text-green-600' : 'text-red-600'}`}>
+                {updateBlocklistMessage}
+              </p>
+            )}
 
             <div className="border-t border-border-color my-6"></div>
              <div>

@@ -365,8 +365,8 @@ class ProxyServer {
       return { blocked: true, reason: 'Port Block', source: 'Règle Système' };
     }
 
-    // 5. Vérifier la blocklist
-    const blocklistResult = this.blocklistManager.isBlocked(hostname);
+    // 5. Vérifier la blocklist - avec cache LRU pour performance
+    const blocklistResult = this.blocklistManager.isBlockedWithCache(hostname);
     if (blocklistResult.blocked) {
       // Déterminer le type de menace basé sur le domaine
       const threatType = this.determineThreatType(hostname);

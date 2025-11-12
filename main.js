@@ -518,6 +518,23 @@ app.whenReady().then(async () => {
       }
     });
 
+    ipcMain.handle('getBlocklistCacheStats', async () => {
+      try {
+        return blocklist.getCacheStats();
+      } catch (error) {
+        logger.error(`Erreur getBlocklistCacheStats: ${error.message}`);
+        return {
+          size: 0,
+          maxSize: 0,
+          hits: 0,
+          misses: 0,
+          evictions: 0,
+          hitRate: '0%',
+          totalRequests: 0
+        };
+      }
+    });
+
     ipcMain.handle('getThreatAnalysis', async () => {
       try {
         return logger.getThreatAnalysis();

@@ -5,7 +5,7 @@ const dns = require('dns').promises;
  */
 
 /**
- * Vérifie si une chaîne ressemble à une adresse IP
+ * Vérifie si une chaîne ressemble à une adresse IP (IPv4 ou IPv6)
  * @param {string} str
  * @returns {boolean}
  */
@@ -22,12 +22,181 @@ function looksLikeIP(str) {
     });
   }
 
-  // IPv6: contient des :
-  if (str.includes(':') && !str.includes('::ffff:')) {
+  // IPv6: contient des : (support complet)
+  if (isValidIPv6(str)) {
     return true;
   }
 
   return false;
+}
+
+/**
+ * Valide une adresse IPv6 complète
+ * @param {string} ip
+ * @returns {boolean}
+ */
+function isValidIPv6(ip) {
+  if (!ip) return false;
+
+  // Pattern IPv6 complet (avec compression ::)
+  const ipv6Pattern = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]+|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$/;
+
+  return ipv6Pattern.test(ip);
+}
+
+/**
+ * Valide la longueur d'un domaine selon RFC 1035 (DoS protection)
+ * @param {string} domain
+ * @returns {boolean}
+ */
+function validateDomainLength(domain) {
+  if (!domain) return false;
+
+  // RFC 1035: 253 caractères max pour un FQDN
+  if (domain.length > 253) {
+    return false;
+  }
+
+  // RFC 1035: Chaque label max 63 caractères
+  const labels = domain.split('.');
+  for (const label of labels) {
+    if (label.length > 63) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Valide le format d'un domaine (Injection prevention)
+ * @param {string} domain
+ * @returns {boolean}
+ */
+function validateDomainFormat(domain) {
+  if (!domain) return false;
+
+  // Permettre wildcards (*.example.com)
+  if (domain.startsWith('*.')) {
+    domain = domain.substring(2);
+  }
+
+  // Permettre CIDR (192.168.0.0/16)
+  if (domain.includes('/')) {
+    const [ip, bits] = domain.split('/');
+    const bitsNum = parseInt(bits, 10);
+
+    // Valider IPv4 CIDR
+    if (looksLikeIP(ip) && bitsNum >= 0 && bitsNum <= 32) {
+      return true;
+    }
+
+    // Valider IPv6 CIDR
+    if (isValidIPv6(ip) && bitsNum >= 0 && bitsNum <= 128) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // Vérifier si c'est une IP (valide)
+  if (looksLikeIP(domain)) {
+    return true;
+  }
+
+  // Pattern strict pour domaine
+  // Autorise: lettres, chiffres, tirets, points
+  // Ne commence/termine pas par tiret, pas de points consécutifs
+  const domainPattern = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.[a-z0-9-]{1,63})*$/i;
+
+  return domainPattern.test(domain);
+}
+
+/**
+ * Calcule l'entropie de Shannon d'une chaîne (pour détecter DNS tunneling)
+ * @param {string} str
+ * @returns {number} Entropie (0-8 bits)
+ */
+function calculateEntropy(str) {
+  if (!str || str.length === 0) return 0;
+
+  const freq = {};
+  for (const char of str) {
+    freq[char] = (freq[char] || 0) + 1;
+  }
+
+  let entropy = 0;
+  const len = str.length;
+
+  for (const char in freq) {
+    const p = freq[char] / len;
+    entropy -= p * Math.log2(p);
+  }
+
+  return entropy;
+}
+
+/**
+ * Détecte les patterns suspects de DNS tunneling (Advanced threat detection)
+ * @param {string} domain
+ * @returns {object} { suspicious: boolean, reasons: string[] }
+ */
+function detectDNSTunneling(domain) {
+  if (!domain) return { suspicious: false, reasons: [] };
+
+  const reasons = [];
+  const cleaned = cleanDomain(domain);
+
+  // 1. Longueur de domaine excessive (>50 caractères)
+  if (cleaned.length > 50) {
+    reasons.push('Longueur excessive');
+  }
+
+  // 2. Nombre de sous-domaines excessif (>4)
+  const labels = cleaned.split('.');
+  if (labels.length > 5) {
+    reasons.push('Trop de sous-domaines');
+  }
+
+  // 3. Labels très longs (>20 caractères)
+  const longLabels = labels.filter(l => l.length > 20);
+  if (longLabels.length > 0) {
+    reasons.push('Labels très longs');
+  }
+
+  // 4. Entropie élevée (>4.5 bits = données encodées)
+  const entropy = calculateEntropy(cleaned.replace(/\./g, ''));
+  if (entropy > 4.5) {
+    reasons.push('Entropie élevée (données encodées)');
+  }
+
+  // 5. Présence de patterns base64/hex suspects
+  const base64Pattern = /[A-Za-z0-9+/=]{20,}/;
+  const hexPattern = /[0-9a-fA-F]{32,}/;
+
+  for (const label of labels) {
+    if (base64Pattern.test(label)) {
+      reasons.push('Pattern Base64 détecté');
+      break;
+    }
+    if (hexPattern.test(label)) {
+      reasons.push('Pattern hexadécimal détecté');
+      break;
+    }
+  }
+
+  // 6. Trop de chiffres (>60% = suspect)
+  const digitCount = (cleaned.match(/\d/g) || []).length;
+  const digitRatio = digitCount / cleaned.length;
+  if (digitRatio > 0.6) {
+    reasons.push('Trop de chiffres');
+  }
+
+  return {
+    suspicious: reasons.length >= 2, // 2+ indicateurs = suspect
+    reasons,
+    entropy: entropy.toFixed(2)
+  };
 }
 
 /**
@@ -165,13 +334,16 @@ async function resolveHostname(hostname, timeout = 5000) {
 }
 
 /**
- * Vérifie si un port est standard (80, 443) ou VoIP (3478, 5060, 5061)
+ * Vérifie si un port est autorisé (configurab le)
  * @param {number} port
+ * @param {array} allowedPorts - Liste des ports autorisés (optionnel)
  * @returns {boolean}
  */
-function isStandardPort(port) {
-  const allowedPorts = [80, 443, 3478, 5060, 5061];
-  return allowedPorts.includes(port);
+function isStandardPort(port, allowedPorts = null) {
+  // Ports par défaut si non spécifié
+  const defaultPorts = [80, 443, 3478, 5060, 5061, 8080, 8443];
+  const portsToCheck = allowedPorts || defaultPorts;
+  return portsToCheck.includes(port);
 }
 
 /**
@@ -367,6 +539,11 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
 
 module.exports = {
   looksLikeIP,
+  isValidIPv6,
+  validateDomainLength,
+  validateDomainFormat,
+  calculateEntropy,
+  detectDNSTunneling,
   extractHostnameFromPath,
   extractPortFromPath,
   matchesDomainPattern,

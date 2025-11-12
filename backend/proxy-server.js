@@ -1,8 +1,17 @@
 const http = require('http');
 const net = require('net');
 const url = require('url');
-const { extractHostnameFromPath, extractPortFromPath, looksLikeIP, isStandardPort } = require('./utils');
+const {
+  extractHostnameFromPath,
+  extractPortFromPath,
+  looksLikeIP,
+  isStandardPort,
+  validateDomainLength,
+  validateDomainFormat,
+  detectDNSTunneling
+} = require('./utils');
 const logger = require('./logger');
+const RateLimiter = require('./rate-limiter');
 
 /**
  * Serveur proxy HTTP/HTTPS avec filtrage
@@ -15,6 +24,21 @@ class ProxyServer {
     this.server = null;
     this.isRunning = false;
     this.activeConnections = new Set();
+
+    // Rate limiter pour protection DoS
+    this.rateLimiter = new RateLimiter({
+      maxRequests: 100,      // 100 requêtes max
+      windowMs: 1000,        // par seconde
+      blockDurationMs: 60000 // blocage 1 minute
+    });
+
+    // Statistiques des menaces détectées
+    this.threatStats = {
+      invalidDomains: 0,
+      dnsTunneling: 0,
+      rateLimitHits: 0,
+      bypassAttempts: 0
+    };
   }
 
   /**
@@ -75,6 +99,11 @@ class ProxyServer {
     }
     this.activeConnections.clear();
 
+    // Nettoyer le rate limiter
+    if (this.rateLimiter) {
+      this.rateLimiter.destroy();
+    }
+
     return new Promise((resolve) => {
       this.server.close(() => {
         this.isRunning = false;
@@ -92,8 +121,11 @@ class ProxyServer {
     const hostname = extractHostnameFromPath(requestURL);
     const port = extractPortFromPath(requestURL);
 
-    // Vérifier les règles de blocage
-    const blockResult = this.shouldBlock(hostname, port, false);
+    // Extraire l'IP du client
+    const clientIP = clientReq.socket.remoteAddress || 'unknown';
+
+    // Vérifier les règles de blocage (avec IP pour rate limiting)
+    const blockResult = this.shouldBlock(hostname, port, false, clientIP);
 
     if (blockResult.blocked) {
       this.sendBlockedResponse(clientRes, hostname, blockResult.reason);
@@ -187,14 +219,17 @@ class ProxyServer {
     const [hostname, port] = req.url.split(':');
     const targetPort = parseInt(port) || 443;
 
+    // Extraire l'IP du client
+    const clientIP = clientSocket.remoteAddress || 'unknown';
+
     // Ajouter aux connexions actives
     this.activeConnections.add(clientSocket);
     clientSocket.on('close', () => {
       this.activeConnections.delete(clientSocket);
     });
 
-    // Vérifier les règles de blocage
-    const blockResult = this.shouldBlock(hostname, targetPort, true);
+    // Vérifier les règles de blocage (avec IP pour rate limiting)
+    const blockResult = this.shouldBlock(hostname, targetPort, true, clientIP);
 
     if (blockResult.blocked) {
       clientSocket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
@@ -335,9 +370,13 @@ class ProxyServer {
 
   /**
    * Détermine si une requête doit être bloquée
+   * @param {string} hostname - Nom de domaine
+   * @param {number} port - Port
+   * @param {boolean} isHTTPS - Si c'est HTTPS
+   * @param {string} clientIP - IP du client (pour rate limiting)
    * @returns {object} { blocked: boolean, reason?: string, source?: string }
    */
-  shouldBlock(hostname, port, isHTTPS) {
+  shouldBlock(hostname, port, isHTTPS, clientIP = null) {
     const config = this.configManager.get();
 
     // Si la protection est désactivée, ne rien bloquer
@@ -345,27 +384,77 @@ class ProxyServer {
       return { blocked: false };
     }
 
-    // 1. Vérifier la whitelist d'abord (bypass tout) - avec cache LRU pour performance
+    // 0. Rate Limiting (DoS protection) - AVANT tout
+    if (clientIP) {
+      const rateLimitResult = this.rateLimiter.checkRateLimit(clientIP);
+      if (!rateLimitResult.allowed) {
+        this.threatStats.rateLimitHits++;
+        logger.warn(`Rate limit dépassé pour ${clientIP}: ${hostname}`);
+        return {
+          blocked: true,
+          reason: 'Rate Limit',
+          source: 'Protection DoS'
+        };
+      }
+    }
+
+    // 1. Validation de longueur de domaine (DoS protection)
+    if (!validateDomainLength(hostname)) {
+      this.threatStats.invalidDomains++;
+      this.logBypassAttempt(hostname, clientIP, 'Longueur invalide (RFC 1035)');
+      return {
+        blocked: true,
+        reason: 'Domaine invalide',
+        source: 'Validation Sécurité'
+      };
+    }
+
+    // 2. Validation du format de domaine (Injection prevention)
+    if (!validateDomainFormat(hostname)) {
+      this.threatStats.invalidDomains++;
+      this.logBypassAttempt(hostname, clientIP, 'Format invalide');
+      return {
+        blocked: true,
+        reason: 'Format invalide',
+        source: 'Validation Sécurité'
+      };
+    }
+
+    // 3. Détection DNS Tunneling (Advanced threat)
+    const tunnelingResult = detectDNSTunneling(hostname);
+    if (tunnelingResult.suspicious) {
+      this.threatStats.dnsTunneling++;
+      this.logBypassAttempt(hostname, clientIP, `DNS Tunneling: ${tunnelingResult.reasons.join(', ')}`);
+      logger.warn(`DNS Tunneling détecté: ${hostname} (${tunnelingResult.reasons.join(', ')})`);
+      return {
+        blocked: true,
+        reason: 'DNS Tunneling',
+        source: 'Détection Avancée'
+      };
+    }
+
+    // 4. Vérifier la whitelist (bypass tout) - avec cache LRU pour performance
     if (this.whitelistManager.isWhitelistedWithCache(hostname)) {
       return { blocked: false };
     }
 
-    // 2. Vérifier si c'est un accès direct par IP
+    // 5. Vérifier si c'est un accès direct par IP
     if (config.blockDirectIPs && looksLikeIP(hostname)) {
+      this.logBypassAttempt(hostname, clientIP, 'Accès direct par IP');
       return { blocked: true, reason: 'IP Block', source: 'Règle Système' };
     }
 
-    // 3. Vérifier si c'est du HTTP (force HTTPS)
+    // 6. Vérifier si c'est du HTTP (force HTTPS)
     if (config.blockHTTPTraffic && !isHTTPS) {
       return { blocked: true, reason: 'HTTP Block', source: 'Règle Système' };
     }
 
-    // 4. Vérifier les ports non-standard
-    if (config.blockNonStandardPorts && !isStandardPort(port)) {
+    // 7. Vérifier les ports non-standard (avec ports configurables)
+    if (config.blockNonStandardPorts && !isStandardPort(port, config.allowedPorts)) {
       return { blocked: true, reason: 'Port Block', source: 'Règle Système' };
     }
 
-    // 5. Vérifier la blocklist - avec cache LRU pour performance
+    // 8. Vérifier la blocklist - avec cache LRU pour performance
     const blocklistResult = this.blocklistManager.isBlockedWithCache(hostname);
     if (blocklistResult.blocked) {
       // Déterminer le type de menace basé sur le domaine
@@ -382,38 +471,106 @@ class ProxyServer {
   }
 
   /**
-   * Détermine le type de menace basé sur le nom de domaine
+   * Log des tentatives de bypass (Monitoring)
+   * @param {string} hostname
+   * @param {string} clientIP
+   * @param {string} reason
+   */
+  logBypassAttempt(hostname, clientIP, reason) {
+    this.threatStats.bypassAttempts++;
+    logger.warn(`⚠️ Tentative de bypass: ${hostname} depuis ${clientIP || 'unknown'} - ${reason}`);
+  }
+
+  /**
+   * Détermine le type de menace basé sur le nom de domaine (Classification avancée)
    */
   determineThreatType(domain) {
     const lowerDomain = domain.toLowerCase();
 
-    // Patterns de détection
-    if (lowerDomain.includes('teamviewer') || lowerDomain.includes('anydesk') ||
-        lowerDomain.includes('logmein') || lowerDomain.includes('remotedesktop')) {
+    // 1. Remote Desktop (priorité haute car risque FR)
+    const remoteDesktopPatterns = [
+      'teamviewer', 'anydesk', 'logmein', 'remotedesktop', 'supremo',
+      'splashtop', 'ammyy', 'ultraviewer', 'rustdesk', 'chrome-remote',
+      'rdp', 'vnc', 'remote-access'
+    ];
+    if (remoteDesktopPatterns.some(p => lowerDomain.includes(p))) {
       return 'Remote Desktop';
     }
 
-    if (lowerDomain.includes('scam') || lowerDomain.includes('free-money') ||
-        lowerDomain.includes('prize') || lowerDomain.includes('winner')) {
+    // 2. Phishing (usurpation d'identité)
+    const phishingPatterns = [
+      'secure-', 'verify-', 'account-', 'login-', 'signin-', 'update-',
+      'confirm-', 'validate-', 'suspended-', 'locked-', 'alert-',
+      'paypal', 'bank', 'netflix', 'amazon', 'microsoft', 'apple',
+      'service-', 'security-', 'support-'
+    ];
+    if (phishingPatterns.some(p => lowerDomain.includes(p))) {
+      // Vérifier si c'est un sous-domaine suspect (ex: paypal-secure.evil.com)
+      const labels = lowerDomain.split('.');
+      if (labels.length >= 3) {
+        return 'Phishing';
+      }
+    }
+
+    // 3. Scam / Arnaque
+    const scamPatterns = [
+      'scam', 'free-money', 'prize', 'winner', 'lottery', 'jackpot',
+      'earn-money', 'quick-cash', 'bitcoin-', 'crypto-gift', 'giveaway',
+      'millionaire', 'guaranteed', 'claim-now', 'urgent-action'
+    ];
+    if (scamPatterns.some(p => lowerDomain.includes(p))) {
       return 'Scam';
     }
 
-    if (lowerDomain.includes('phishing') || lowerDomain.includes('secure-bank') ||
-        lowerDomain.includes('paypal-verify') || lowerDomain.includes('account-verify')) {
-      return 'Phishing';
-    }
-
-    if (lowerDomain.includes('ad') || lowerDomain.includes('ads') ||
-        lowerDomain.includes('doubleclick') || lowerDomain.includes('analytics')) {
-      return 'Adware';
-    }
-
-    if (lowerDomain.includes('malware') || lowerDomain.includes('virus') ||
-        lowerDomain.includes('trojan') || lowerDomain.includes('download')) {
+    // 4. Malware / Virus
+    const malwarePatterns = [
+      'malware', 'virus', 'trojan', 'ransomware', 'spyware', 'keylogger',
+      'botnet', 'backdoor', 'exploit', 'payload', 'rootkit', 'worm',
+      'crack', 'keygen', 'activator', 'loader'
+    ];
+    if (malwarePatterns.some(p => lowerDomain.includes(p))) {
       return 'Malware';
     }
 
-    // Par défaut
+    // 5. Tracking / Adware
+    const adwarePatterns = [
+      'doubleclick', 'googleadservices', 'googlesyndication', 'advertising',
+      'adserver', 'adsystem', 'adnxs', 'openx', 'pubmatic', 'criteo',
+      'outbrain', 'taboola', 'tracking', 'tracker', 'analytics',
+      'pixel', 'beacon', 'telemetry'
+    ];
+    if (adwarePatterns.some(p => lowerDomain.includes(p))) {
+      return 'Tracking/Adware';
+    }
+
+    // 6. C2 / Botnet (Command & Control)
+    const c2Patterns = [
+      'c2', 'cnc', 'command-', 'control-', 'botnet', 'bot-',
+      'panel', 'admin-panel'
+    ];
+    if (c2Patterns.some(p => lowerDomain.includes(p))) {
+      return 'C2/Botnet';
+    }
+
+    // 7. Cryptomining (crypto miners non autorisés)
+    const cryptoPatterns = [
+      'coinhive', 'jsecoin', 'cryptoloot', 'miner', 'mining-',
+      'crypto-pool', 'monero-', 'xmr-'
+    ];
+    if (cryptoPatterns.some(p => lowerDomain.includes(p))) {
+      return 'Cryptomining';
+    }
+
+    // 8. Typosquatting (domaines similaires à des marques)
+    const typoPatterns = [
+      'gooogle', 'micros0ft', 'faceb00k', 'netfl1x', 'amaz0n',
+      'yah00', 'g00gle', 'youutube', 'tw1tter', 'inst4gram'
+    ];
+    if (typoPatterns.some(p => lowerDomain.includes(p))) {
+      return 'Typosquatting';
+    }
+
+    // Par défaut : Malware générique
     return 'Malware';
   }
 
@@ -508,7 +665,14 @@ class ProxyServer {
 
     res.writeHead(403, {
       'Content-Type': 'text/html; charset=utf-8',
-      'Content-Length': Buffer.byteLength(html)
+      'Content-Length': Buffer.byteLength(html),
+      // Security headers (HSTS/CSP enforcement)
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'X-XSS-Protection': '1; mode=block',
+      'Referrer-Policy': 'no-referrer'
     });
     res.end(html);
   }
@@ -548,13 +712,15 @@ class ProxyServer {
   }
 
   /**
-   * Obtient les statistiques
+   * Obtient les statistiques (incluant menaces et rate limiting)
    */
   getStats() {
     return {
       isRunning: this.isRunning,
       activeConnections: this.activeConnections.size,
-      ...logger.getStats()
+      ...logger.getStats(),
+      rateLimiter: this.rateLimiter.getStats(),
+      threats: this.threatStats
     };
   }
 }

@@ -37,6 +37,9 @@ class ConfigManager {
       blockNonStandardPorts: true,
       blockRemoteDesktop: true,
 
+      // Ports autorisés (configurables)
+      allowedPorts: [80, 443, 3478, 5060, 5061, 8080, 8443],
+
       // Proxy
       proxyPort: 8081,
       proxyHost: '127.0.0.1',

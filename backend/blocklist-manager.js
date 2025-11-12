@@ -4,10 +4,12 @@ const fs = require('fs').promises;
 const path = require('path');
 const { cleanDomain, parseHostsLine, parseSimpleListLine, parseCSVLine, retryWithBackoff } = require('./utils');
 const logger = require('./logger');
+const BloomFilter = require('./bloom-filter');
 
 /**
  * Gestionnaire de blocklist avec téléchargement multi-sources
  * Sources: URLhaus, StevenBlack, HaGeZi Ultimate, Phishing Army, Liste FR
+ * Optimisé avec Bloom Filter pour réduire l'empreinte mémoire
  */
 class BlocklistManager {
   constructor(configManager) {
@@ -20,6 +22,9 @@ class BlocklistManager {
     this.isLoading = false;
     this.lastUpdate = null;
     this.updateIntervalId = null; // Stocker l'interval pour pouvoir le nettoyer
+
+    // Bloom Filter pour pré-filtrage rapide (optimisation mémoire)
+    this.bloomFilter = null; // Initialisé lors du premier chargement
 
     // Métadonnées pour chaque liste (date de MAJ, âge, statut)
     this.listMetadata = {
@@ -113,10 +118,30 @@ class BlocklistManager {
         remoteDesktopDomains.forEach(d => this.blockedDomains.add(d));
       }
 
+      // Initialiser le Bloom Filter avec tous les domaines
+      this.initializeBloomFilter();
+
       logger.info(`Blocklist chargée depuis cache: ${this.blockedDomains.size} domaines`);
     } catch (error) {
       logger.error(`Erreur chargement cache: ${error.message}`);
     }
+  }
+
+  /**
+   * Initialise le Bloom Filter avec tous les domaines actuels
+   */
+  initializeBloomFilter() {
+    const totalDomains = this.blockedDomains.size + this.customBlockedDomains.size;
+
+    // Créer un nouveau Bloom Filter avec une marge de 20%
+    this.bloomFilter = new BloomFilter(Math.ceil(totalDomains * 1.2), 0.001);
+
+    // Ajouter tous les domaines au Bloom Filter
+    this.blockedDomains.forEach(domain => this.bloomFilter.add(domain));
+    this.customBlockedDomains.forEach(domain => this.bloomFilter.add(domain));
+
+    const stats = this.bloomFilter.getStats();
+    logger.info(`Bloom Filter initialisé: ${stats.actualElements} domaines, ${stats.memoryMB} de mémoire`);
   }
 
   /**
@@ -350,6 +375,9 @@ class BlocklistManager {
       this.blockedDomains = allDomains;
       this.lastUpdate = new Date();
 
+      // Réinitialiser le Bloom Filter avec les nouveaux domaines
+      this.initializeBloomFilter();
+
       // Sauvegarder le cache et les métadonnées
       await this.saveToCache();
       await this.saveMetadata();
@@ -505,24 +533,32 @@ class BlocklistManager {
   }
 
   /**
-   * Vérifie si un domaine est bloqué
+   * Vérifie si un domaine est bloqué (avec Bloom Filter pré-filtre)
    */
   isBlocked(hostname) {
-    if (!hostname) return false;
+    if (!hostname) return { blocked: false };
 
     const cleaned = cleanDomain(hostname);
 
+    // 0. Bloom Filter pré-filtre (ultra-rapide, économise CPU)
+    // Si le Bloom Filter dit NON, c'est définitivement NON (pas de faux négatifs)
+    if (this.bloomFilter && !this.bloomFilter.has(cleaned)) {
+      // Le domaine n'est définitivement PAS dans la blocklist
+      return { blocked: false };
+    }
+
+    // 1. Si le Bloom Filter dit OUI (possiblement présent), vérifier dans le Set réel
     // Vérifier la blocklist principale
     if (this.blockedDomains.has(cleaned)) {
       return { blocked: true, reason: 'Malware', source: 'Blocklists' };
     }
 
-    // Vérifier avec www.
+    // 2. Vérifier avec www.
     if (this.blockedDomains.has('www.' + cleaned)) {
       return { blocked: true, reason: 'Malware', source: 'Blocklists' };
     }
 
-    // Vérifier sans www. si présent
+    // 3. Vérifier sans www. si présent
     if (cleaned.startsWith('www.')) {
       const withoutWww = cleaned.substring(4);
       if (this.blockedDomains.has(withoutWww)) {
@@ -530,12 +566,12 @@ class BlocklistManager {
       }
     }
 
-    // Vérifier la blocklist custom (match exact)
+    // 4. Vérifier la blocklist custom (match exact)
     if (this.customBlockedDomains.has(cleaned)) {
       return { blocked: true, reason: 'Custom', source: 'Liste Personnalisée' };
     }
 
-    // Vérifier les sous-domaines (parents)
+    // 5. Vérifier les sous-domaines (parents)
     const parts = cleaned.split('.');
     for (let i = 1; i < parts.length - 1; i++) {
       const parent = parts.slice(i).join('.');
@@ -595,21 +631,30 @@ class BlocklistManager {
   }
 
   /**
-   * Obtient les statistiques du cache
+   * Obtient les statistiques du cache (inclut Bloom Filter)
    */
   getCacheStats() {
     const total = this.cacheStats.hits + this.cacheStats.misses;
     const hitRate = total > 0 ? ((this.cacheStats.hits / total) * 100).toFixed(2) : 0;
 
-    return {
-      size: this.blocklistCache.size,
-      maxSize: this.cacheMaxSize,
-      hits: this.cacheStats.hits,
-      misses: this.cacheStats.misses,
-      evictions: this.cacheStats.evictions,
-      hitRate: `${hitRate}%`,
-      totalRequests: total
+    const stats = {
+      lruCache: {
+        size: this.blocklistCache.size,
+        maxSize: this.cacheMaxSize,
+        hits: this.cacheStats.hits,
+        misses: this.cacheStats.misses,
+        evictions: this.cacheStats.evictions,
+        hitRate: `${hitRate}%`,
+        totalRequests: total
+      }
     };
+
+    // Ajouter les stats du Bloom Filter si disponible
+    if (this.bloomFilter) {
+      stats.bloomFilter = this.bloomFilter.getStats();
+    }
+
+    return stats;
   }
 
   /**
@@ -641,6 +686,11 @@ class BlocklistManager {
     this.customBlockedDomains.add(cleaned);
     await this.saveCustomBlocklist();
 
+    // Ajouter au Bloom Filter
+    if (this.bloomFilter) {
+      this.bloomFilter.add(cleaned);
+    }
+
     logger.info(`Domaine ajouté à la blocklist custom: ${cleaned}`);
 
     // Notifier que la liste a changé (pour fermer les connexions actives)
@@ -661,6 +711,11 @@ class BlocklistManager {
 
     this.customBlockedDomains.delete(cleaned);
     await this.saveCustomBlocklist();
+
+    // Réinitialiser le Bloom Filter (impossible de retirer d'un Bloom filter)
+    if (this.bloomFilter) {
+      this.initializeBloomFilter();
+    }
 
     logger.info(`Domaine retiré de la blocklist custom: ${cleaned}`);
 

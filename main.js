@@ -680,6 +680,23 @@ app.whenReady().then(async () => {
       }
     ));
 
+    ipcMain.handle('getWhitelistCacheStats', async () => {
+      try {
+        return whitelist.getCacheStats();
+      } catch (error) {
+        logger.error(`Erreur getWhitelistCacheStats: ${error.message}`);
+        return {
+          size: 0,
+          maxSize: 0,
+          hits: 0,
+          misses: 0,
+          evictions: 0,
+          hitRate: '0%',
+          totalRequests: 0
+        };
+      }
+    });
+
     // ═══════════════════════════════════════════════════════
     // IPC HANDLERS - Blocklist
     // ═══════════════════════════════════════════════════════

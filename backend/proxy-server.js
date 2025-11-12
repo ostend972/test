@@ -345,8 +345,8 @@ class ProxyServer {
       return { blocked: false };
     }
 
-    // 1. Vérifier la whitelist d'abord (bypass tout)
-    if (this.whitelistManager.isWhitelisted(hostname)) {
+    // 1. Vérifier la whitelist d'abord (bypass tout) - avec cache LRU pour performance
+    if (this.whitelistManager.isWhitelistedWithCache(hostname)) {
       return { blocked: false };
     }
 

@@ -83,7 +83,8 @@ class WhitelistManager {
         'digicert.com',
         'ctldl.windowsupdate.com',
         'drive.google.com',
-        'ooklaserver.net'
+        'ooklaserver.net',
+        '*.ooklaserver.net'
       ];
 
       this.whitelist.clear();
@@ -123,7 +124,9 @@ class WhitelistManager {
       '192.168.0.0/16',  // Réseau local privé
       '10.0.0.0/8',      // Réseau local privé
       '172.16.0.0/12',   // Réseau local privé
-      '127.0.0.0/8'      // Localhost
+      '127.0.0.0/8',     // Localhost
+      'ooklaserver.net',
+      '*.ooklaserver.net'  // Speedtest
     ];
 
     for (const domain of defaultDomains) {
@@ -236,7 +239,31 @@ class WhitelistManager {
       }
     }
 
-    // 3. Si c'est une IP, vérifier les ranges CIDR
+    // 3. Vérification des domaines parents
+    // Exemple: pour "sub.domain.example.com", vérifie "domain.example.com" puis "example.com"
+    // Ceci permet à "ooklaserver.net" d'autoriser "plau01speedtst0.sunrise.ch.prod.hosts.ooklaserver.net"
+    const parts = cleaned.split('.');
+    for (let i = 1; i < parts.length - 1; i++) {
+      const parent = parts.slice(i).join('.');
+
+      // Vérification exacte du parent
+      if (this.whitelist.has(parent)) {
+        this.incrementHits(parent);
+        return true;
+      }
+
+      // Vérification wildcard du parent (ex: *.example.com)
+      for (const [pattern, entry] of this.whitelist.entries()) {
+        if (pattern.includes('*')) {
+          if (matchesDomainPattern(parent, pattern)) {
+            this.incrementHits(pattern);
+            return true;
+          }
+        }
+      }
+    }
+
+    // 4. Si c'est une IP, vérifier les ranges CIDR
     if (looksLikeIP(cleaned)) {
       for (const [pattern, entry] of this.whitelist.entries()) {
         if (pattern.includes('/')) {

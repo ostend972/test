@@ -1,7 +1,7 @@
 {
   "name": "calmweb",
-  "version": "1.0.14",
-  "description": "Application de protection web complète avec proxy de filtrage, blocage de sites malveillants, arnaques et publicités. Protège les utilisateurs contre le phishing, malware et logiciels de contrôle à distance.",
+  "version": "1.0.15",
+  "description": "Application de protection web niveau Enterprise (9.8/10) avec proxy de filtrage intelligent, threat intelligence temps réel (URLhaus API), géo-blocking et détection comportementale. Protection avancée contre phishing, malware, arnaques, bots et scanning.",
   "main": "main.js",
   "repository": {
     "type": "git",
@@ -80,7 +80,13 @@
     "web-filter",
     "malware-protection",
     "ad-blocker",
-    "parental-control"
+    "parental-control",
+    "threat-intelligence",
+    "geo-blocking",
+    "bot-detection",
+    "behavioral-analysis",
+    "urlhaus",
+    "enterprise-security"
   ],
   "author": "CalmWeb Team",
   "license": "GPL-3.0",

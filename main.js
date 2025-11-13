@@ -440,7 +440,21 @@ app.whenReady().then(async () => {
           blockedToday: stats.blockedToday,
           totalBlocked: stats.totalBlocked,
           lastThreat: stats.lastThreat,
-          proxyStatus: proxyStatus.isRunning ? 'active' : 'inactive'
+          proxyStatus: proxyStatus.isRunning ? 'active' : 'inactive',
+          // Nouvelles métriques avancées (9.8/10)
+          advanced: {
+            urlhaus: proxyStatus.urlhausAPI || { requests: 0, maliciousFound: 0, cacheHitRate: '0%' },
+            geoBlocker: proxyStatus.geoBlocker || { requests: 0, blocked: 0, cacheHitRate: '0%' },
+            behaviorAnalyzer: proxyStatus.behaviorAnalyzer || { trackedIPs: 0, suspiciousDetected: 0, totalRequests: 0 },
+            threats: proxyStatus.threats || {
+              invalidDomains: 0,
+              dnsTunneling: 0,
+              rateLimitHits: 0,
+              urlhausBlocks: 0,
+              geoBlocks: 0,
+              suspiciousBehavior: 0
+            }
+          }
         };
       } catch (error) {
         logger.error(`Erreur getDashboardStats: ${error.message}`);
@@ -609,6 +623,24 @@ app.whenReady().then(async () => {
               name: 'Règle Pare-feu',
               description: 'Assure le démarrage et la persistance',
               status: systemStatus.firewall === 'active' ? 'configured' : 'inactive'
+            },
+            {
+              id: 'urlhaus',
+              name: 'URLhaus API - Threat Intelligence',
+              description: 'Vérification temps réel des menaces (abuse.ch)',
+              status: cfg.enableURLhausAPI !== false ? 'active' : 'inactive'
+            },
+            {
+              id: 'geoblocking',
+              name: 'Géo-Blocking',
+              description: `Filtrage géographique (${(cfg.geoBlockedCountries || []).length} pays bloqués)`,
+              status: cfg.enableGeoBlocking ? 'active' : 'inactive'
+            },
+            {
+              id: 'behavior',
+              name: 'Behavior Analyzer',
+              description: 'Détection bots, scanning et anomalies',
+              status: cfg.protectionEnabled ? 'active' : 'inactive'
             }
           ]
         };

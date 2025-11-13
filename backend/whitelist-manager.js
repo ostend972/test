@@ -386,7 +386,7 @@ class WhitelistManager {
         await this.save();
       } catch (error) {
         // Erreur silencieuse, ne pas bloquer le flux
-        console.error('Erreur sauvegarde whitelist hits:', error.message);
+        logger.error('Erreur sauvegarde whitelist hits:', error.message);
       }
     }, 30000); // 30 secondes
   }

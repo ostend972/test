@@ -35,11 +35,12 @@ const TechnicalLogs: React.FC = () => {
     });
 
     // Calcul de la pagination
-    const totalItems = logs?.length || 0;
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    const totalItems = safeLogs.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    const paginatedLogs = logs?.slice(startIndex, endIndex) || [];
+    const paginatedLogs = safeLogs.slice(startIndex, endIndex);
 
     // Réinitialiser à la page 1 quand les filtres changent
     useEffect(() => {

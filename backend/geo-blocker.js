@@ -1,4 +1,4 @@
-const http = require('http');
+const https = require('https');
 const logger = require('./logger');
 
 /**
@@ -118,9 +118,9 @@ class GeoBlocker {
    */
   async lookupIP(ip) {
     return new Promise((resolve, reject) => {
-      const url = `http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,city`;
+      const url = `https://ip-api.com/json/${ip}?fields=status,message,country,countryCode,city`;
 
-      const req = http.get(url, { timeout: 5000 }, (res) => {
+      const req = https.get(url, { timeout: 5000 }, (res) => {
         let data = '';
 
         res.on('data', chunk => {

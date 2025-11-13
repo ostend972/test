@@ -6,6 +6,11 @@ import { Card } from '../ui/Card';
 import { DomainTable } from './DomainTable';
 import { Button } from '../ui/Button';
 
+// Domain validation regex (RFC 1035)
+const DOMAIN_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/i;
+const MAX_DOMAIN_LENGTH = 253;
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 const ConfirmationModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
@@ -13,15 +18,17 @@ const ConfirmationModal: React.FC<{
   domainName: string;
   isLoading: boolean;
   title: string;
-  message: string;
-}> = ({ isOpen, onClose, onConfirm, domainName, isLoading, title, message }) => {
+}> = ({ isOpen, onClose, onConfirm, domainName, isLoading, title }) => {
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" aria-modal="true" role="dialog">
             <div className="bg-white rounded-lg p-8 m-4 max-w-md w-full shadow-xl">
                 <h2 className="text-xl font-bold mb-4">{title}</h2>
-                <p className="text-text-subtle mb-6" dangerouslySetInnerHTML={{ __html: message }} />
+                <p className="text-text-subtle mb-6">
+                    Êtes-vous sûr de vouloir supprimer le domaine{' '}
+                    <strong className="font-bold">{domainName}</strong> de la liste blanche ?
+                </p>
                 <div className="flex justify-end space-x-4">
                     <Button variant="secondary" onClick={onClose} disabled={isLoading}>Annuler</Button>
                     <Button variant="danger" onClick={onConfirm} isLoading={isLoading}>Supprimer</Button>
@@ -81,9 +88,24 @@ export const WhitelistManager: React.FC = () => {
 
     const handleAddDomain = (e: React.FormEvent) => {
         e.preventDefault();
-        if (newDomain.trim()) {
-            addMutation.mutate(newDomain.trim());
+        const domain = newDomain.trim().toLowerCase();
+
+        if (!domain) {
+            alert('Veuillez entrer un domaine');
+            return;
         }
+
+        if (domain.length > MAX_DOMAIN_LENGTH) {
+            alert(`Le domaine est trop long (maximum ${MAX_DOMAIN_LENGTH} caractères)`);
+            return;
+        }
+
+        if (!DOMAIN_REGEX.test(domain)) {
+            alert('Format de domaine invalide. Exemple valide: example.com');
+            return;
+        }
+
+        addMutation.mutate(domain);
     };
 
     const handleDeleteDomain = (domain: string) => {
@@ -100,9 +122,21 @@ export const WhitelistManager: React.FC = () => {
     
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            importMutation.mutate(file);
+        if (!file) return;
+
+        // Validate file type
+        if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
+            alert('Seuls les fichiers CSV sont acceptés');
+            return;
         }
+
+        // Validate file size
+        if (file.size > MAX_FILE_SIZE) {
+            alert(`Le fichier est trop volumineux (maximum ${MAX_FILE_SIZE / 1024 / 1024} MB)`);
+            return;
+        }
+
+        importMutation.mutate(file);
     };
 
     return (
@@ -156,7 +190,6 @@ export const WhitelistManager: React.FC = () => {
                 domainName={domainToDelete || ''}
                 isLoading={deleteMutation.isPending && deletingDomain === domainToDelete}
                 title="Confirmer la suppression"
-                message={`Êtes-vous sûr de vouloir supprimer le domaine <strong>${domainToDelete}</strong> de la liste blanche ?`}
             />
         </>
     );

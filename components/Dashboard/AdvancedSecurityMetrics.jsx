@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getDashboardStats } from '../../services/api.js';
 import { useWebSocket } from '../../hooks/useWebSocket.js';
@@ -57,20 +57,28 @@ export const AdvancedSecurityMetrics = () => {
     });
 
     // WebSocket temps réel pour mises à jour instantanées
-    useWebSocket('stats_update', (updatedStats) => {
-        queryClient.setQueryData(['dashboardStats'], (prevStats) => {
-            if (!prevStats) return prevStats;
-            return {
-                ...prevStats,
-                ...updatedStats,
-                // Fusionner les stats avancées si disponibles
-                advanced: {
-                    ...prevStats.advanced,
-                    ...updatedStats.advanced
-                }
-            };
+    useEffect(() => {
+        const unsubscribe = useWebSocket('stats_update', (updatedStats) => {
+            queryClient.setQueryData(['dashboardStats'], (prevStats) => {
+                if (!prevStats) return prevStats;
+                return {
+                    ...prevStats,
+                    ...updatedStats,
+                    // Fusionner les stats avancées si disponibles
+                    advanced: {
+                        ...prevStats.advanced,
+                        ...updatedStats.advanced
+                    }
+                };
+            });
         });
-    });
+
+        return () => {
+            if (typeof unsubscribe === 'function') {
+                unsubscribe();
+            }
+        };
+    }, [queryClient]);
 
     if (isLoading) {
         return (

@@ -53,13 +53,13 @@ export default function UpdateSection() {
       setErrorMessage(error.message);
     });
 
-    // Nettoyage
+    // Nettoyage avec optional chaining pour éviter les erreurs
     return () => {
-      unsubscribeAvailable();
-      unsubscribeNotAvailable();
-      unsubscribeProgress();
-      unsubscribeDownloaded();
-      unsubscribeError();
+      unsubscribeAvailable?.();
+      unsubscribeNotAvailable?.();
+      unsubscribeProgress?.();
+      unsubscribeDownloaded?.();
+      unsubscribeError?.();
     };
   }, []);
 

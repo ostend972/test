@@ -37,7 +37,7 @@ export const RealtimeFeed: React.FC = () => {
       <div className="space-y-3 h-96 overflow-y-auto pr-2">
         {events.length === 0 && <p className="text-text-subtle text-center pt-10">En attente d'activité...</p>}
         {events.map((event, index) => (
-          <div key={index} className="flex items-start justify-between text-sm">
+          <div key={`${event.timestamp}-${event.domain}-${index}`} className="flex items-start justify-between text-sm">
             <div className="flex items-start space-x-3">
               <div className="flex-shrink-0 mt-0.5">
                 {event.type === 'blocked' ? (event.reason ? iconMap[event.reason] : iconMap['Malware']) : <AllowedIcon />}

@@ -1,0 +1,232 @@
+const { app, BrowserWindow, ipcMain } = require('electron');
+const path = require('path');
+
+// --- START OF MOCK DATA (moved from api.js) ---
+const generateFakeIp = () => `${Math.floor(Math.random() * 255) + 1}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+
+let mockProxyStatus = 'active';
+let nextDomainId = 5;
+
+let mockWhitelist = [
+    { id: 1, domain: 'youtube.com', createdAt: new Date('2023-05-10T10:00:00Z').toISOString(), ipAddress: "142.250.184.206", hits: 128, lastUsed: new Date(Date.now() - 3600000).toISOString() },
+    { id: 2, domain: 'google.com', createdAt: new Date('2023-05-12T11:30:00Z').toISOString(), ipAddress: "142.250.185.110", hits: 340, lastUsed: new Date(Date.now() - 60000).toISOString() },
+    { id: 3, domain: 'wikipedia.org', createdAt: new Date('2023-05-15T15:00:00Z').toISOString(), ipAddress: "208.80.154.224", hits: 45, lastUsed: new Date(Date.now() - 86400000).toISOString() },
+];
+
+let mockBlocklist = [
+    { id: 4, domain: 'malicious-ads.com', createdAt: new Date('2023-06-01T09:00:00Z').toISOString(), ipAddress: "104.21.55.122", hits: 89, lastUsed: new Date(Date.now() - 3600000 * 2).toISOString() },
+];
+
+let mockConfig = {
+  protectionEnabled: true,
+  blockDirectIPs: true,
+  blockRemoteDesktop: false,
+  updateInterval: 24,
+  proxyPort: 8080,
+  blocklistSources: {
+      'stevenBlack': true,
+      'easylistFR': true,
+      'hageziUltimate': true,
+      'redFlagDomains': true,
+  }
+};
+
+let mockLogs = [
+    { id: '1', timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), level: 'INFO', message: 'Proxy service started on port 8080.' },
+    { id: '2', timestamp: new Date(Date.now() - 3600000 * 1.5).toISOString(), level: 'INFO', message: 'Blocklists updated successfully. 15,000 new entries added.' },
+    { id: '3', timestamp: new Date(Date.now() - 3600000 * 1).toISOString(), level: 'WARNING', message: 'High memory usage detected: 85%.' },
+    { id: '4', timestamp: new Date(Date.now() - 60000 * 10).toISOString(), level: 'ERROR', message: 'Failed to fetch updates from source: PhishTank (timeout).' },
+];
+
+let mockSecurityEvents = [
+    { id: 'ev1', type: 'allowed', domain: 'google.com', timestamp: new Date(Date.now() - 60000 * 1).toISOString() },
+    { id: 'ev2', type: 'blocked', domain: 'free-money-scam.net', reason: 'Scam', source: 'Red Flag Domains', timestamp: new Date(Date.now() - 60000 * 2).toISOString() },
+    { id: 'ev3', type: 'allowed', domain: 'wikipedia.org', timestamp: new Date(Date.now() - 60000 * 3).toISOString() },
+    { id: 'ev4', type: 'blocked', domain: '1.2.3.4', reason: 'IP Block', source: 'Règle Système', timestamp: new Date(Date.now() - 60000 * 5).toISOString() },
+    { id: 'ev5', type: 'blocked', domain: 'annoying-ad-server.com', reason: 'Adware', source: 'Easylist FR', timestamp: new Date(Date.now() - 60000 * 8).toISOString() },
+    { id: 'ev6', type: 'blocked', domain: 'dodgy-download.org', reason: 'Malware', source: 'Hagezi Ultimate', timestamp: new Date(Date.now() - 60000 * 12).toISOString() },
+];
+
+const toCSV = (data) => {
+    const header = ['id', 'domain', 'ipAddress', 'createdAt'];
+    const rows = data.map(d => [d.id, d.domain, d.ipAddress, d.createdAt].join(','));
+    return [header.join(','), ...rows].join('\n');
+};
+// --- END OF MOCK DATA ---
+
+function createWindow () {
+  const mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+    }
+  });
+
+  mainWindow.loadFile('index.html');
+  
+  // Real-time event simulation
+  const eventInterval = setInterval(() => {
+    const domains = [
+      'free-money-scam.net', 'secure-bank-portal.com', 'dodgy-download.org', 
+      'family-photos.info', 'click-here-for-prize.co', 'annoying-ad-server.com',
+      '8.8.8.8', 
+      'anydesk-connection.com'
+    ];
+    const blockReasons = {
+        'free-money-scam.net': { reason: 'Scam', source: 'Red Flag Domains' },
+        'dodgy-download.org': { reason: 'Malware', source: 'Hagezi Ultimate' },
+        'click-here-for-prize.co': { reason: 'Phishing', source: 'PhishTank' },
+        'annoying-ad-server.com': { reason: 'Adware', source: 'Easylist FR' },
+        '8.8.8.8': { reason: 'IP Block', source: 'Règle Système' },
+        'anydesk-connection.com': { reason: 'Remote Desktop', source: 'Règle Système' }
+    };
+
+    const randomDomain = domains[Math.floor(Math.random() * domains.length)];
+    const isAllowed = randomDomain === 'secure-bank-portal.com' || randomDomain === 'family-photos.info';
+    
+    const eventDetails = blockReasons[randomDomain];
+
+    const fakeEvent = {
+      type: isAllowed ? 'allowed' : 'blocked',
+      domain: randomDomain,
+      timestamp: new Date().toISOString(),
+      reason: isAllowed ? undefined : eventDetails?.reason || 'Malware',
+      source: isAllowed ? undefined : eventDetails?.source || 'Hagezi Ultimate',
+    };
+    
+    mainWindow.webContents.send('domain_event', fakeEvent);
+  }, 4000);
+  
+  mainWindow.on('closed', () => {
+    clearInterval(eventInterval);
+  });
+}
+
+app.whenReady().then(() => {
+  // --- IPC HANDLERS ---
+  ipcMain.handle('getDashboardStats', () => ({
+    blockedToday: { value: 42, trend: 15 },
+    totalBlocked: 1389,
+    lastThreat: { domain: 'malicious-site.net', timestamp: new Date().toISOString() },
+    proxyStatus: mockProxyStatus,
+  }));
+  ipcMain.handle('getProxyStatus', () => ({ status: mockProxyStatus }));
+  ipcMain.handle('getWhitelist', () => [...mockWhitelist]);
+  ipcMain.handle('addWhitelistDomain', (event, domain) => {
+    if (mockWhitelist.some(d => d.domain === domain)) throw new Error('Ce domaine est déjà dans la liste blanche.');
+    const newDomain = { id: nextDomainId++, domain, createdAt: new Date().toISOString(), ipAddress: generateFakeIp(), hits: 0, lastUsed: null };
+    mockWhitelist.push(newDomain);
+    return newDomain;
+  });
+  ipcMain.handle('deleteWhitelistDomain', (event, domainName) => {
+    mockWhitelist = mockWhitelist.filter(d => d.domain !== domainName);
+    return { message: 'Domaine supprimé avec succès' };
+  });
+  ipcMain.handle('getBlocklist', () => [...mockBlocklist]);
+  ipcMain.handle('addBlocklistDomain', (event, domain) => {
+    if (mockBlocklist.some(d => d.domain === domain)) throw new Error('Ce domaine est déjà dans la liste noire.');
+    const newDomain = { id: nextDomainId++, domain, createdAt: new Date().toISOString(), ipAddress: generateFakeIp(), hits: 0, lastUsed: null };
+    mockBlocklist.push(newDomain);
+    return newDomain;
+  });
+  ipcMain.handle('deleteBlocklistDomain', (event, domainName) => {
+    mockBlocklist = mockBlocklist.filter(d => d.domain !== domainName);
+    return { message: 'Domaine supprimé avec succès' };
+  });
+  ipcMain.handle('disableProtection', () => {
+    mockProxyStatus = 'inactive';
+    setTimeout(() => { 
+        mockProxyStatus = 'active'; // Auto-reenable for demo
+    }, 15000);
+    return { message: 'Protection désactivée' };
+  });
+  ipcMain.handle('getChartData', () => {
+    const now = new Date();
+    return Array.from({ length: 24 }, (_, i) => {
+        const hour = new Date(now.getTime() - (23 - i) * 3600 * 1000);
+        return {
+            time: `${String(hour.getHours()).padStart(2, '0')}:00`,
+            blocks: Math.floor(Math.random() * (hour.getHours() < 6 || hour.getHours() > 20 ? 10 : 50)) + 5,
+        }
+    });
+  });
+  ipcMain.handle('getConfig', () => ({ ...mockConfig }));
+  ipcMain.handle('updateConfig', (event, config) => {
+    mockConfig = { ...mockConfig, ...config };
+    return { ...mockConfig };
+  });
+  ipcMain.handle('getLogs', (event, filters) => {
+    let filteredLogs = [...mockLogs];
+    if (filters.level) {
+        filteredLogs = filteredLogs.filter(log => log.level === filters.level);
+    }
+    return filteredLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  });
+  ipcMain.handle('getSecurityEvents', () => [...mockSecurityEvents].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  ipcMain.handle('exportLogs', () => {
+    const content = mockLogs.map(log => `${log.timestamp} [${log.level}] ${log.message}`).join('\n');
+    return { content, filename: 'calmweb_logs.txt' };
+  });
+  ipcMain.handle('generateDiagnosticReport', () => {
+    const content = `CalmWeb Diagnostics Report\n${new Date().toISOString()}\n\nConfig:\n${JSON.stringify(mockConfig, null, 2)}\n\nStatus: ${mockProxyStatus}`;
+    return { content, filename: 'calmweb_diagnostics.txt' };
+  });
+  ipcMain.handle('exportWhitelist', () => ({ content: toCSV(mockWhitelist), filename: 'calmweb_whitelist.csv' }));
+  ipcMain.handle('importWhitelist', (event, { content }) => {
+    // In a real app, you would parse the CSV content here.
+    const newDomains = [
+      { id: nextDomainId++, domain: 'imported-site1.com', createdAt: new Date().toISOString(), ipAddress: generateFakeIp(), hits: 0, lastUsed: null },
+      { id: nextDomainId++, domain: 'imported-site2.com', createdAt: new Date().toISOString(), ipAddress: generateFakeIp(), hits: 0, lastUsed: null },
+    ];
+    mockWhitelist.push(...newDomains);
+    return { message: `Importation réussie. ${newDomains.length} domaines ajoutés.` };
+  });
+  ipcMain.handle('exportBlocklist', () => ({ content: toCSV(mockBlocklist), filename: 'calmweb_blocklist.csv' }));
+  ipcMain.handle('importBlocklist', (event, { content }) => {
+    // In a real app, you would parse the CSV content here.
+    const newDomains = [ { id: nextDomainId++, domain: 'imported-malware.com', createdAt: new Date().toISOString(), ipAddress: generateFakeIp(), hits: 0, lastUsed: null } ];
+    mockBlocklist.push(...newDomains);
+    return { message: `Importation réussie. ${newDomains.length} domaines ajoutés.` };
+  });
+  ipcMain.handle('getTopBlockedCategories', () => [
+    { name: 'Phishing', count: 45 }, { name: 'Malware', count: 30 }, { name: 'Arnaque', count: 18 }, { name: 'Autre', count: 7 },
+  ]);
+  ipcMain.handle('getThreatAnalysis', () => ({
+    title: "Analyse de la journée",
+    summary: "L'activité de blocage est en hausse de 15% aujourd'hui, principalement due à une vague de sites de phishing. Le domaine 'free-money-scam.net' a été le plus fréquemment bloqué.",
+    recommendation: "Conseil : Soyez particulièrement vigilant avec les e-mails promettant des gains faciles ou demandant des informations personnelles."
+  }));
+  ipcMain.handle('getTopBlockedDomains', () => [
+    { domain: 'free-money-scam.net', count: 12, threatType: 'Scam', source: 'Red Flag Domains' },
+    { domain: 'dodgy-download.org', count: 9, threatType: 'Malware', source: 'Hagezi Ultimate' },
+    { domain: 'malicious-ads.com', count: 7, threatType: 'Adware', source: 'StevenBlack/hosts' },
+    { domain: 'click-here-for-prize.co', count: 5, threatType: 'Phishing', source: 'PhishTank' },
+  ]);
+  ipcMain.handle('getProtectionStatusDetails', () => ({
+    layers: [
+        { id: 'malware', name: 'Protection Arnaques & Malware', description: 'Blocage des sites malveillants, phishing, etc.', status: mockConfig.protectionEnabled ? 'active' : 'inactive' },
+        { id: 'ads', name: 'Blocage Publicités', description: 'Basé sur les listes Easylist & StevenBlack', status: mockConfig.protectionEnabled ? 'active' : 'inactive' },
+        { id: 'remote', name: 'Blocage Logiciels Distants', description: 'TeamViewer, AnyDesk, Assistance Windows', status: mockConfig.blockRemoteDesktop ? 'active' : 'inactive' },
+        { id: 'ip_nav', name: 'Blocage Navigation par IP', description: 'Empêche les contournements par IP directe', status: mockConfig.blockDirectIPs ? 'active' : 'inactive' },
+        { id: 'ports', name: 'Filtrage des Ports', description: 'Seuls les ports 80/443 sont autorisés', status: mockConfig.protectionEnabled ? 'active' : 'inactive' },
+        { id: 'proxy', name: 'Proxy Système', description: 'Le trafic est routé via CalmWeb', status: 'configured' },
+        { id: 'firewall', name: 'Règle Pare-feu', description: 'Assure le démarrage et la persistance', status: 'configured' },
+    ]
+  }));
+  ipcMain.handle('getSystemIntegrityStatus', () => ({
+    proxy: 'configured', firewall: 'active', startupTask: 'active',
+  }));
+
+  createWindow();
+
+  app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', function () {
+  if (process.platform !== 'darwin') app.quit();
+});

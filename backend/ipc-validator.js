@@ -51,7 +51,6 @@ const validators = {
       'blockNonStandardPorts',
       'blocklistSources',
       'blocklistURLs',
-      'communityBlocklistURL',
       'autoUpdate',
       'updateInterval',
       'lastUpdate',
@@ -131,7 +130,6 @@ const validators = {
 
         case 'whitelistGitHubURL':
         case 'usefulDomainsURL':
-        case 'communityBlocklistURL':
           if (typeof val !== 'string' || !val.startsWith('https://')) {
             throw new Error(`${key} must be a valid HTTPS URL`);
           }
@@ -142,7 +140,7 @@ const validators = {
           if (typeof val !== 'object' || val === null || Array.isArray(val)) {
             throw new Error('blocklistSources must be an object');
           }
-          const allowedSources = ['urlhaus', 'urlhausRecent', 'stevenBlack', 'hageziUltimate', 'phishingArmy', 'easylistFR'];
+          const allowedSources = ['urlhaus', 'stevenBlack', 'hageziUltimate', 'phishingArmy', 'easylistFR'];
           const validatedSources = {};
           for (const [source, enabled] of Object.entries(val)) {
             if (!allowedSources.includes(source)) {

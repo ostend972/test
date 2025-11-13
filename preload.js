@@ -8,7 +8,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Limite le nombre d'appels API pour éviter le DoS
 const rateLimiter = {
   calls: new Map(),
-  limit: 999999, // Aucune limite pratique
+  limit: 100, // 100 appels max
   window: 60000, // par minute
 
   check(method) {
@@ -280,11 +280,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Confirmation requise côté UI avant cet appel
     console.warn('[Security] System repair requested');
     return secureInvoke('repairSystem');
-  },
-
-  forceBlocklistUpdate: async () => {
-    console.info('[Security] Manual blocklist update requested');
-    return secureInvoke('forceBlocklistUpdate');
   },
 
   // ═══════════════════════════════════════════════════════

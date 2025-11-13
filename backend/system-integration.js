@@ -193,9 +193,20 @@ class SystemIntegration {
 
         logger.info(`Proxy système activé: ${proxyServer}`);
       } else {
-        // Désactiver le proxy
-        await execSecure('netsh', ['winhttp', 'reset', 'proxy']);
-        await this.setRegistryProxy('', 0, false);
+        // Désactiver le proxy - essayer plusieurs méthodes pour garantir la désactivation
+        try {
+          await execSecure('netsh', ['winhttp', 'reset', 'proxy']);
+          logger.info('✓ Proxy WinHTTP désactivé');
+        } catch (error) {
+          logger.warn(`Impossible de désactiver proxy WinHTTP: ${error.message}`);
+        }
+
+        try {
+          await this.setRegistryProxy('', 0, false);
+          logger.info('✓ Proxy registre désactivé');
+        } catch (error) {
+          logger.warn(`Impossible de désactiver proxy registre: ${error.message}`);
+        }
 
         delete process.env.HTTP_PROXY;
         delete process.env.HTTPS_PROXY;
@@ -206,6 +217,12 @@ class SystemIntegration {
       return true;
     } catch (error) {
       logger.error(`Erreur configuration proxy système: ${error.message}`);
+      // Essayer quand même de désactiver le proxy en cas d'erreur
+      try {
+        await execSecure('netsh', ['winhttp', 'reset', 'proxy']);
+      } catch (e) {
+        // Ignorer l'erreur finale
+      }
       return false;
     }
   }

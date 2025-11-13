@@ -26,6 +26,7 @@ export const TopThreats: React.FC = () => {
     const { data: domains, isLoading, isError } = useQuery<TopBlockedDomain[], Error>({
         queryKey: ['topBlockedDomains'],
         queryFn: getTopBlockedDomains,
+        refetchInterval: 15000, // Rafraîchir toutes les 15 secondes
     });
 
     return (
@@ -37,7 +38,7 @@ export const TopThreats: React.FC = () => {
                     {[...Array(4)].map((_, i) => <div key={i} className="h-8 bg-gray-200 rounded w-full"></div>)}
                 </div>}
                 {isError && <p className="px-6 text-danger text-sm">Erreur de chargement des domaines.</p>}
-                {domains && (
+                {Array.isArray(domains) && domains.length > 0 && (
                     <table className="min-w-full">
                         <thead className="bg-gray-50/50">
                              <tr>

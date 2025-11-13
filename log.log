@@ -1,0 +1,13 @@
+(index):64 cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+(anonymous) @ (index):64
+index-Box84SJp-1762824254227.js:41 Uncaught TypeError: Cannot read properties of undefined (reading 'color')
+    at Gv (index-Box84SJp-1762824254227.js:41:88533)
+    at Jf (index-Box84SJp-1762824254227.js:8:48106)
+    at bd (index-Box84SJp-1762824254227.js:8:70911)
+    at B0 (index-Box84SJp-1762824254227.js:8:81245)
+    at yb (index-Box84SJp-1762824254227.js:8:117013)
+    at YC (index-Box84SJp-1762824254227.js:8:116059)
+    at Hd (index-Box84SJp-1762824254227.js:8:115891)
+    at cb (index-Box84SJp-1762824254227.js:8:112684)
+    at _b (index-Box84SJp-1762824254227.js:8:124605)
+    at tu (index-Box84SJp-1762824254227.js:8:123153)

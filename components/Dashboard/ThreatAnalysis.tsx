@@ -13,6 +13,7 @@ export const ThreatAnalysis: React.FC = () => {
     const { data, isLoading, isError } = useQuery<ThreatAnalysisType, Error>({
         queryKey: ['threatAnalysis'],
         queryFn: getThreatAnalysis,
+        refetchInterval: 30000, // Rafraîchir toutes les 30 secondes
     });
 
     if (isLoading) {

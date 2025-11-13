@@ -16,10 +16,6 @@ class Logger extends EventEmitter {
     this.nextLogId = 1;
     this.nextEventId = 1;
 
-    // Queue pour éviter les race conditions sur l'écriture des logs
-    this.logWriteQueue = Promise.resolve();
-    this.eventWriteQueue = Promise.resolve();
-
     // Chemin des fichiers de persistance
     const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
     this.configDir = path.join(appData, 'CalmWeb');
@@ -58,19 +54,19 @@ class Logger extends EventEmitter {
       console.error('Erreur chargement événements sécurité persistants:', err);
     });
 
-    // DÉSACTIVÉ : Nettoyage automatique des logs (ils restent à vie)
-    // this.cleanOldLogs().catch(err => {
-    //   console.error('Erreur nettoyage logs anciens:', err);
-    // });
-    // this.cleanOldSecurityEvents().catch(err => {
-    //   console.error('Erreur nettoyage événements anciens:', err);
-    // });
+    // Nettoyer les logs de plus de 31 jours au démarrage
+    this.cleanOldLogs().catch(err => {
+      console.error('Erreur nettoyage logs anciens:', err);
+    });
+    this.cleanOldSecurityEvents().catch(err => {
+      console.error('Erreur nettoyage événements anciens:', err);
+    });
 
     // Reset quotidien à minuit
     this.scheduleDailyResetStats();
 
-    // DÉSACTIVÉ : Nettoyage mensuel automatique (les logs restent à vie)
-    // this.scheduleMonthlyCleanup();
+    // Nettoyage mensuel automatique
+    this.scheduleMonthlyCleanup();
   }
 
   /**
@@ -371,28 +367,28 @@ class Logger extends EventEmitter {
   }
 
   /**
-   * Nettoie les logs de plus d'un mois
+   * Nettoie les logs de plus de 31 jours
    */
   async cleanOldLogs() {
     try {
       const content = await fs.readFile(this.logsFile, 'utf-8');
       const logs = JSON.parse(content);
 
-      // Calculer la date limite (30 jours)
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+      // Calculer la date limite (31 jours)
+      const thirtyOneDaysAgo = new Date();
+      thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31);
 
       // Filtrer les logs récents
       const recentLogs = logs.filter(log => {
         const logDate = new Date(log.timestamp);
-        return logDate >= oneMonthAgo;
+        return logDate >= thirtyOneDaysAgo;
       });
 
       // Si des logs ont été supprimés, sauvegarder
       if (recentLogs.length < logs.length) {
         await fs.writeFile(this.logsFile, JSON.stringify(recentLogs, null, 2), 'utf-8');
         const deleted = logs.length - recentLogs.length;
-        console.log(`[Logger] ${deleted} logs de plus d'un mois supprimés`);
+        console.log(`[Logger] ${deleted} logs de plus de 31 jours supprimés`);
       }
     } catch (error) {
       // Fichier n'existe pas ou erreur, ignorer
@@ -400,28 +396,28 @@ class Logger extends EventEmitter {
   }
 
   /**
-   * Nettoie les événements de sécurité de plus d'un mois
+   * Nettoie les événements de sécurité de plus de 31 jours
    */
   async cleanOldSecurityEvents() {
     try {
       const content = await fs.readFile(this.securityEventsFile, 'utf-8');
       const events = JSON.parse(content);
 
-      // Calculer la date limite (30 jours)
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+      // Calculer la date limite (31 jours)
+      const thirtyOneDaysAgo = new Date();
+      thirtyOneDaysAgo.setDate(thirtyOneDaysAgo.getDate() - 31);
 
       // Filtrer les événements récents
       const recentEvents = events.filter(event => {
         const eventDate = new Date(event.timestamp);
-        return eventDate >= oneMonthAgo;
+        return eventDate >= thirtyOneDaysAgo;
       });
 
       // Si des événements ont été supprimés, sauvegarder
       if (recentEvents.length < events.length) {
         await fs.writeFile(this.securityEventsFile, JSON.stringify(recentEvents, null, 2), 'utf-8');
         const deleted = events.length - recentEvents.length;
-        console.log(`[Logger] ${deleted} événements de plus d'un mois supprimés`);
+        console.log(`[Logger] ${deleted} événements de plus de 31 jours supprimés`);
       }
     } catch (error) {
       // Fichier n'existe pas ou erreur, ignorer
@@ -432,14 +428,14 @@ class Logger extends EventEmitter {
    * Planifie le nettoyage mensuel automatique
    */
   scheduleMonthlyCleanup() {
-    // Exécuter le nettoyage tous les 30 jours
-    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    // Exécuter le nettoyage tous les 31 jours
+    const thirtyOneDays = 31 * 24 * 60 * 60 * 1000;
 
     setInterval(async () => {
-      console.log('[Logger] Nettoyage mensuel automatique des logs...');
+      console.log('[Logger] Nettoyage automatique des logs de plus de 31 jours...');
       await this.cleanOldLogs();
       await this.cleanOldSecurityEvents();
-    }, thirtyDays);
+    }, thirtyOneDays);
   }
 
   /**
@@ -708,65 +704,49 @@ class Logger extends EventEmitter {
   }
 
   /**
-   * Persiste un log dans le fichier (avec queue pour éviter les race conditions)
+   * Persiste un log dans le fichier
    */
   async persistLog(logEntry) {
-    // Ajouter à la queue pour garantir les écritures séquentielles
-    this.logWriteQueue = this.logWriteQueue.then(async () => {
+    try {
+      // S'assurer que le répertoire existe
+      await this.ensureConfigDir();
+
+      let logs = [];
       try {
-        // S'assurer que le répertoire existe
-        await this.ensureConfigDir();
-
-        let logs = [];
-        try {
-          const content = await fs.readFile(this.logsFile, 'utf-8');
-          logs = JSON.parse(content);
-        } catch (err) {
-          // Fichier n'existe pas encore
-        }
-
-        logs.push(logEntry);
-        await fs.writeFile(this.logsFile, JSON.stringify(logs, null, 2), 'utf-8');
-      } catch (error) {
-        // Erreur silencieuse pour ne pas bloquer l'application
-        console.error('[Logger] Erreur persistance log:', error.message);
+        const content = await fs.readFile(this.logsFile, 'utf-8');
+        logs = JSON.parse(content);
+      } catch (err) {
+        // Fichier n'existe pas encore
       }
-    }).catch(err => {
-      console.error('[Logger] Erreur dans la queue:', err);
-    });
 
-    return this.logWriteQueue;
+      logs.push(logEntry);
+      await fs.writeFile(this.logsFile, JSON.stringify(logs, null, 2), 'utf-8');
+    } catch (error) {
+      // Erreur silencieuse pour ne pas bloquer l'application
+    }
   }
 
   /**
-   * Persiste un événement de sécurité dans le fichier (avec queue pour éviter les race conditions)
+   * Persiste un événement de sécurité dans le fichier
    */
   async persistSecurityEvent(event) {
-    // Ajouter à la queue pour garantir les écritures séquentielles
-    this.eventWriteQueue = this.eventWriteQueue.then(async () => {
+    try {
+      // S'assurer que le répertoire existe
+      await this.ensureConfigDir();
+
+      let events = [];
       try {
-        // S'assurer que le répertoire existe
-        await this.ensureConfigDir();
-
-        let events = [];
-        try {
-          const content = await fs.readFile(this.securityEventsFile, 'utf-8');
-          events = JSON.parse(content);
-        } catch (err) {
-          // Fichier n'existe pas encore
-        }
-
-        events.push(event);
-        await fs.writeFile(this.securityEventsFile, JSON.stringify(events, null, 2), 'utf-8');
-      } catch (error) {
-        // Erreur silencieuse pour ne pas bloquer l'application
-        console.error('[Logger] Erreur persistance événement:', error.message);
+        const content = await fs.readFile(this.securityEventsFile, 'utf-8');
+        events = JSON.parse(content);
+      } catch (err) {
+        // Fichier n'existe pas encore
       }
-    }).catch(err => {
-      console.error('[Logger] Erreur dans la queue événements:', err);
-    });
 
-    return this.eventWriteQueue;
+      events.push(event);
+      await fs.writeFile(this.securityEventsFile, JSON.stringify(events, null, 2), 'utf-8');
+    } catch (error) {
+      // Erreur silencieuse pour ne pas bloquer l'application
+    }
   }
 
   /**
@@ -781,10 +761,11 @@ class Logger extends EventEmitter {
       if (logs.length > 0) {
         const maxId = Math.max(...logs.map(l => parseInt(l.id) || 0));
         this.nextLogId = maxId + 1;
-        console.log(`[Logger] ${logs.length} logs persistants chargés`);
       }
+
+      console.log(`[Logger] ${logs.length} logs persistants chargés`);
     } catch (error) {
-      // Aucun log persistant trouvé, normal au premier démarrage
+      console.log('[Logger] Aucun log persistant trouvé');
     }
   }
 

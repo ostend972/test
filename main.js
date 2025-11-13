@@ -96,6 +96,7 @@ function createWindow(minimized = false) {
       preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
+      cache: false,  // Désactiver le cache pour forcer le rechargement
     },
     title: 'CalmWeb Dashboard',
     fullscreen: false,  // Pas en plein écran par défaut
@@ -123,34 +124,6 @@ function createWindow(minimized = false) {
   }
 
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
-
-  // ═══════════════════════════════════════════════════════
-  // GESTION DE L'ARRÊT SYSTÈME WINDOWS (session-end)
-  // ═══════════════════════════════════════════════════════
-  // Intercepte WM_ENDSESSION pour désactiver le proxy lors de l'arrêt Windows
-  mainWindow.on('session-end', (event, reasons) => {
-    log('═══════════════════════════════════════════════════');
-    log(`⚠ SESSION-END DÉTECTÉ - Raisons: ${reasons.join(', ')}`);
-    log('═══════════════════════════════════════════════════');
-
-    try {
-      const { execSync } = require('child_process');
-
-      // Désactivation SYNCHRONE du proxy (CRITIQUE - doit être rapide)
-      log('Désactivation du proxy système...');
-      execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 1500 });
-      execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 1500 });
-      execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 1500 });
-
-      log('✓ Proxy désactivé avec succès lors de session-end');
-    } catch (error) {
-      log(`✗ Erreur désactivation proxy (session-end): ${error.message}`);
-    }
-
-    log('✓ Nettoyage terminé - Autorisation de l\'arrêt');
-  });
-
-  log('✓ Gestionnaire session-end Windows activé');
 
   // Ouvrir DevTools pour debugging (commenté pour production)
   // mainWindow.webContents.openDevTools();
@@ -353,72 +326,11 @@ app.whenReady().then(async () => {
     await backend.initialize();
     log('Backend initialisé');
 
-    // NETTOYAGE DU PROXY AU DÉMARRAGE
-    // Si un proxy résiduel est actif (suite à un arrêt forcé), le nettoyer AVANT de démarrer
-    log('Vérification du proxy résiduel...');
-    try {
-      const { execSync } = require('child_process');
-      const proxyCheck = execSync('netsh winhttp show proxy', { windowsHide: true, encoding: 'utf-8' });
-
-      // Si un proxy autre que CalmWeb est configuré, ou si CalmWeb était actif mais pas lancé
-      if (proxyCheck.includes('127.0.0.1:8081') || proxyCheck.includes('localhost:8081')) {
-        log('⚠ Proxy résiduel détecté - nettoyage...');
-        execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 3000 });
-        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 3000 });
-        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 3000 });
-        log('✓ Proxy résiduel nettoyé');
-      } else {
-        log('✓ Aucun proxy résiduel détecté');
-      }
-    } catch (cleanupError) {
-      log(`⚠ Erreur vérification proxy: ${cleanupError.message}`);
-    }
-
     log('Démarrage du backend...');
     await backend.start();
     log('Backend démarré');
 
     console.log('Backend initialisé et démarré');
-
-    // ═══════════════════════════════════════════════════════
-    // GESTIONNAIRE D'ARRÊT SYSTÈME WINDOWS
-    // ═══════════════════════════════════════════════════════
-    // Désactive le proxy AVANT l'arrêt/redémarrage de Windows
-    powerMonitor.on('shutdown', (event) => {
-      log('═══════════════════════════════════════════════════');
-      log('⚠ ARRÊT SYSTÈME DÉTECTÉ - Désactivation du proxy...');
-      log('═══════════════════════════════════════════════════');
-
-      // Empêcher l'arrêt immédiat pour avoir le temps de désactiver le proxy
-      event.preventDefault();
-
-      try {
-        const { execSync } = require('child_process');
-
-        // Désactivation SYNCHRONE du proxy (critique)
-        execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 2000 });
-        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 2000 });
-        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 2000 });
-
-        log('✓ Proxy désactivé avec succès avant arrêt système');
-      } catch (error) {
-        log(`✗ Erreur désactivation proxy: ${error.message}`);
-      }
-
-      log('✓ Nettoyage terminé - Autorisation de l\'arrêt système');
-
-      // Permettre l'arrêt de continuer
-      app.quit();
-    });
-
-    // Aussi gérer la mise en veille (certains systèmes)
-    powerMonitor.on('suspend', () => {
-      log('⚠ Mise en veille détectée - Conservation du proxy');
-      // On ne désactive PAS le proxy en mise en veille,
-      // car l'utilisateur reviendra sur le même système
-    });
-
-    log('✓ Gestionnaire d\'arrêt système Windows activé');
 
     // Récupérer les gestionnaires
     const managers = backend.getManagers();
@@ -434,27 +346,13 @@ app.whenReady().then(async () => {
     ipcMain.handle('getDashboardStats', async () => {
       try {
         const stats = logger.getStats();
-        const proxyStats = proxy.getStats(); // ✅ FIX: getStats() au lieu de getStatus()
+        const proxyStatus = proxy.getStatus();
 
         return {
           blockedToday: stats.blockedToday,
           totalBlocked: stats.totalBlocked,
           lastThreat: stats.lastThreat,
-          proxyStatus: proxyStats.isRunning ? 'active' : 'inactive',
-          // Nouvelles métriques avancées (9.8/10)
-          advanced: {
-            urlhaus: proxyStats.urlhausAPI || { requests: 0, maliciousFound: 0, cacheHitRate: '0%' },
-            geoBlocker: proxyStats.geoBlocker || { requests: 0, blocked: 0, cacheHitRate: '0%' },
-            behaviorAnalyzer: proxyStats.behaviorAnalyzer || { trackedIPs: 0, suspiciousDetected: 0, totalRequests: 0 },
-            threats: proxyStats.threats || {
-              invalidDomains: 0,
-              dnsTunneling: 0,
-              rateLimitHits: 0,
-              urlhausBlocks: 0,
-              geoBlocks: 0,
-              suspiciousBehavior: 0
-            }
-          }
+          proxyStatus: proxyStatus.isRunning ? 'active' : 'inactive'
         };
       } catch (error) {
         logger.error(`Erreur getDashboardStats: ${error.message}`);
@@ -532,23 +430,6 @@ app.whenReady().then(async () => {
       }
     });
 
-    ipcMain.handle('getBlocklistCacheStats', async () => {
-      try {
-        return blocklist.getCacheStats();
-      } catch (error) {
-        logger.error(`Erreur getBlocklistCacheStats: ${error.message}`);
-        return {
-          size: 0,
-          maxSize: 0,
-          hits: 0,
-          misses: 0,
-          evictions: 0,
-          hitRate: '0%',
-          totalRequests: 0
-        };
-      }
-    });
-
     ipcMain.handle('getThreatAnalysis', async () => {
       try {
         return logger.getThreatAnalysis();
@@ -623,24 +504,6 @@ app.whenReady().then(async () => {
               name: 'Règle Pare-feu',
               description: 'Assure le démarrage et la persistance',
               status: systemStatus.firewall === 'active' ? 'configured' : 'inactive'
-            },
-            {
-              id: 'urlhaus',
-              name: 'URLhaus API - Threat Intelligence',
-              description: 'Vérification temps réel des menaces (abuse.ch)',
-              status: cfg.enableURLhausAPI !== false ? 'active' : 'inactive'
-            },
-            {
-              id: 'geoblocking',
-              name: 'Géo-Blocking',
-              description: `Filtrage géographique (${(cfg.geoBlockedCountries || []).length} pays bloqués)`,
-              status: cfg.enableGeoBlocking ? 'active' : 'inactive'
-            },
-            {
-              id: 'behavior',
-              name: 'Behavior Analyzer',
-              description: 'Détection bots, scanning et anomalies',
-              status: cfg.protectionEnabled ? 'active' : 'inactive'
             }
           ]
         };
@@ -729,23 +592,6 @@ app.whenReady().then(async () => {
       }
     ));
 
-    ipcMain.handle('getWhitelistCacheStats', async () => {
-      try {
-        return whitelist.getCacheStats();
-      } catch (error) {
-        logger.error(`Erreur getWhitelistCacheStats: ${error.message}`);
-        return {
-          size: 0,
-          maxSize: 0,
-          hits: 0,
-          misses: 0,
-          evictions: 0,
-          hitRate: '0%',
-          totalRequests: 0
-        };
-      }
-    });
-
     // ═══════════════════════════════════════════════════════
     // IPC HANDLERS - Blocklist
     // ═══════════════════════════════════════════════════════
@@ -823,31 +669,10 @@ app.whenReady().then(async () => {
       }
     });
 
-    ipcMain.handle('forceBlocklistUpdate', async () => {
-      try {
-        logger.info('═══════════════════════════════════════════════════');
-        logger.info('   Mise à jour manuelle des blocklists...');
-        logger.info('═══════════════════════════════════════════════════');
-
-        const { blocklist } = backend.getManagers();
-        await blocklist.downloadAndUpdate();
-
-        logger.info('✓ Mise à jour manuelle terminée');
-        return { success: true, message: 'Blocklists mises à jour avec succès' };
-      } catch (error) {
-        logger.error(`Erreur mise à jour manuelle: ${error.message}`);
-        return { success: false, message: error.message };
-      }
-    });
-
     ipcMain.handle('updateConfig', validateIpc(
       { updates: 'config' },
       async (event, { updates }) => {
         try {
-          // Sauvegarder l'état AVANT la mise à jour pour les useful domains
-          const configBeforeUpdate = config.get();
-          const wasUsefulDomainsLoaded = configBeforeUpdate.usefulDomainsLoaded || false;
-
           const result = await config.update(updates);
           logger.info('Configuration mise à jour');
 
@@ -861,46 +686,19 @@ app.whenReady().then(async () => {
           // Si blockRemoteDesktop a changé, recharger la blocklist
           if (updates.blockRemoteDesktop !== undefined) {
             const { blocklist } = backend.getManagers();
-            logger.info(`BlockRemoteDesktop ${updates.blockRemoteDesktop ? 'activé' : 'désactivé'} - rechargement de la blocklist...`);
             await blocklist.reload();
+            logger.info('Blocklist rechargée après changement de blockRemoteDesktop');
           }
 
-          // Si enableUsefulDomains a changé
-          if (updates.enableUsefulDomains !== undefined) {
+          // Si enableUsefulDomains a changé et est activé, télécharger les useful domains
+          if (updates.enableUsefulDomains === true && !result.usefulDomainsLoaded) {
             const { whitelist } = backend.getManagers();
-
-            if (updates.enableUsefulDomains === true) {
-              // Activation des useful domains
-              logger.info('═══════════════════════════════════════════════════');
-              logger.info('   Activation des Useful Domains...');
-              logger.info('═══════════════════════════════════════════════════');
-
-              if (!wasUsefulDomainsLoaded) {
-                // Première activation : télécharger les domaines
-                try {
-                  const added = await whitelist.downloadUsefulDomains();
-                  await config.update({ usefulDomainsLoaded: true });
-                  logger.info(`✓ Useful Domains activés et téléchargés`);
-                  logger.info(`  - ${added} nouveaux domaines ajoutés à la whitelist`);
-                  logger.info('═══════════════════════════════════════════════════');
-                } catch (error) {
-                  logger.warn(`✗ Erreur téléchargement useful domains: ${error.message}`);
-                  logger.info('═══════════════════════════════════════════════════');
-                }
-              } else {
-                // Déjà téléchargé
-                const whitelistData = whitelist.getAll();
-                logger.info(`✓ Useful Domains activés`);
-                logger.info(`  - Les domaines ont déjà été téléchargés`);
-                logger.info(`  - Total whitelist: ${whitelistData.length} domaines utilisateur`);
-                logger.info('═══════════════════════════════════════════════════');
-              }
-            } else if (updates.enableUsefulDomains === false) {
-              // Désactivation
-              logger.info('═══════════════════════════════════════════════════');
-              logger.info('⚠ Useful Domains désactivés');
-              logger.info('  Note: Les domaines déjà téléchargés restent en whitelist');
-              logger.info('═══════════════════════════════════════════════════');
+            try {
+              await whitelist.downloadUsefulDomains();
+              await config.update({ usefulDomainsLoaded: true });
+              logger.info('Useful Domains téléchargés suite à l\'activation');
+            } catch (error) {
+              logger.warn(`Erreur téléchargement useful domains: ${error.message}`);
             }
           }
 
@@ -1023,6 +821,28 @@ app.whenReady().then(async () => {
       }
     });
 
+    ipcMain.handle('forceReloadWhitelist', async () => {
+      try {
+        logger.info('Rechargement forcé de la whitelist GitHub demandé');
+        const result = await whitelist.forceReloadWhitelist();
+        return { success: true, message: `Whitelist rechargée: ${result.added} domaines`, added: result.added };
+      } catch (error) {
+        logger.error(`Erreur forceReloadWhitelist: ${error.message}`);
+        throw error;
+      }
+    });
+
+    ipcMain.handle('forceReloadUsefulDomains', async () => {
+      try {
+        logger.info('Rechargement forcé des useful domains demandé');
+        const result = await whitelist.forceReloadUsefulDomains();
+        return { success: true, message: `Useful domains rechargés: ${result.added} domaines`, added: result.added };
+      } catch (error) {
+        logger.error(`Erreur forceReloadUsefulDomains: ${error.message}`);
+        throw error;
+      }
+    });
+
     // ═══════════════════════════════════════════════════════
     // IPC HANDLERS - Mises à jour
     // ═══════════════════════════════════════════════════════
@@ -1122,21 +942,16 @@ app.whenReady().then(async () => {
 /**
  * Nettoyage à la fermeture
  */
-app.on('window-all-closed', async function () {
-  try {
-    // Arrêter proprement le backend
-    await backend.stop();
-  } catch (error) {
-    console.error('Erreur arrêt backend:', error);
-  }
-
+app.on('window-all-closed', function () {
+  // Sur macOS, l'app reste active même sans fenêtre
   if (process.platform !== 'darwin') {
+    // Sur Windows/Linux, quitter l'app (before-quit s'occupera du nettoyage)
     app.quit();
   }
 });
 
 /**
- * Gestion de l'arrêt propre
+ * Gestion de l'arrêt propre - UN SEUL POINT D'ARRÊT
  */
 let isQuitting = false;
 app.on('before-quit', async (event) => {
@@ -1145,43 +960,17 @@ app.on('before-quit', async (event) => {
     isQuitting = true;
 
     try {
-      log('═══════════════════════════════════════════════════');
       log('Fermeture de l\'application...');
-
-      // DÉSACTIVATION SYNCHRONE DU PROXY EN PREMIER (prioritaire)
-      // Ceci garantit que le proxy est désactivé même si l'app est tuée rapidement
-      const { execSync } = require('child_process');
-      try {
-        execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 3000 });
-        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 3000 });
-        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 3000 });
-        log('✓ Proxy désactivé (mode synchrone prioritaire)');
-      } catch (syncError) {
-        log(`⚠ Erreur désactivation synchrone: ${syncError.message}`);
-      }
-
-      // Arrêter le backend proprement (async)
+      // Arrêter le backend (désactive proxy et firewall)
       await backend.stop();
-      log('✓ Backend arrêté proprement');
-      log('═══════════════════════════════════════════════════');
+      log('Backend arrêté proprement');
     } catch (error) {
-      log(`✗ Erreur arrêt: ${error.message}`);
       console.error('Erreur arrêt avant quit:', error);
-
-      // Tentative de désactivation forcée du proxy en cas d'erreur
-      try {
-        const { execSync } = require('child_process');
-        execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 5000 });
-        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 5000 });
-        execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 5000 });
-        log('✓ Proxy désactivé (mode récupération)');
-      } catch (fallbackError) {
-        log(`✗ Échec désactivation proxy: ${fallbackError.message}`);
-      }
+      log(`Erreur arrêt: ${error.message}`);
     } finally {
       // Quitter réellement
-      log('Application fermée');
-      app.quit();
+      isQuitting = false; // Réinitialiser pour permettre app.quit()
+      setImmediate(() => app.quit());
     }
   }
 });
@@ -1197,7 +986,6 @@ app.whenReady().then(() => {
       await backend.stop();
       log('✓ Proxy désactivé pour la mise en veille');
     } catch (error) {
-      log(`Erreur lors de la mise en veille: ${error.message}`);
       console.error('Erreur lors de la mise en veille:', error);
     }
   });
@@ -1209,61 +997,22 @@ app.whenReady().then(() => {
       await backend.start();
       log('✓ Proxy réactivé après le réveil');
     } catch (error) {
-      log(`Erreur lors du réveil: ${error.message}`);
       console.error('Erreur lors du réveil:', error);
     }
   });
 
   // Désactiver le proxy avant l'arrêt du système
-  // IMPORTANT: Quand Windows s'éteint, cet événement est déclenché
-  // On doit désactiver le proxy de manière SYNCHRONE car on a seulement quelques secondes
-  // Sinon, le proxy reste actif après le redémarrage et bloque tout le trafic
-  powerMonitor.on('shutdown', (event) => {
-    log('═══════════════════════════════════════════════════');
-    log('⚠ ARRÊT DU SYSTÈME DÉTECTÉ');
-    log('Désactivation d\'urgence du proxy système...');
-
-    const { execSync } = require('child_process');
-    let successCount = 0;
-    let errorCount = 0;
-
-    // 1. Désactiver le proxy WinHTTP (utilisé par Windows et beaucoup d'applications)
+  powerMonitor.on('shutdown', async (event) => {
     try {
-      execSync('netsh winhttp reset proxy', { windowsHide: true, timeout: 3000 });
-      log('  ✓ Proxy WinHTTP désactivé');
-      successCount++;
+      log('Arrêt du système - désactivation du proxy...');
+      event.preventDefault(); // Empêcher l'arrêt immédiat
+      await backend.stop();
+      log('✓ Proxy désactivé pour l\'arrêt');
+      app.quit();
     } catch (error) {
-      log(`  ✗ Erreur proxy WinHTTP: ${error.message}`);
-      errorCount++;
+      console.error('Erreur lors de l\'arrêt:', error);
+      app.quit();
     }
-
-    // 2. Désactiver le proxy Internet Explorer/Edge (clé ProxyEnable)
-    try {
-      execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f', { windowsHide: true, timeout: 3000 });
-      log('  ✓ Proxy IE/Edge désactivé (ProxyEnable=0)');
-      successCount++;
-    } catch (error) {
-      log(`  ✗ Erreur ProxyEnable: ${error.message}`);
-      errorCount++;
-    }
-
-    // 3. Nettoyer la valeur ProxyServer dans le registre
-    try {
-      execSync('reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyServer /t REG_SZ /d "" /f', { windowsHide: true, timeout: 3000 });
-      log('  ✓ ProxyServer nettoyé');
-      successCount++;
-    } catch (error) {
-      log(`  ✗ Erreur ProxyServer: ${error.message}`);
-      errorCount++;
-    }
-
-    // Rapport final
-    if (errorCount === 0) {
-      log('✓ PROXY DÉSACTIVÉ AVEC SUCCÈS');
-    } else {
-      log(`⚠ DÉSACTIVATION PARTIELLE: ${successCount} succès, ${errorCount} erreur(s)`);
-    }
-    log('═══════════════════════════════════════════════════');
   });
 });
 

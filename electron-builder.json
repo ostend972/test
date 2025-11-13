@@ -1,10 +1,8 @@
 {
   "appId": "com.calmweb.app",
   "productName": "CalmWeb",
-  "copyright": "Copyright © 2025 CalmWeb. Tous droits réservés.",
   "directories": {
-    "output": "dist",
-    "buildResources": "."
+    "output": "dist"
   },
   "files": [
     "main.js",
@@ -15,79 +13,34 @@
     "dist/assets/**/*",
     "backend/**/*",
     "!backend/**/*.test.js",
-    "!backend/**/*.spec.js",
-    "!backend/**/__tests__/**",
-    "!backend/**/*.md",
-    "!**/.git",
-    "!**/.gitignore",
-    "!**/.DS_Store",
-    "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
-    "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
-    "!**/node_modules/*.d.ts",
-    "!**/node_modules/.bin",
-    "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
-    "!.editorconfig",
-    "!**/._*",
-    "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
-    "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
-    "!**/{appveyor.yml,.travis.yml,circle.yml}",
-    "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+    "!backend/**/*.spec.js"
   ],
-  "compression": "maximum",
   "win": {
     "target": [
-      {
-        "target": "nsis",
-        "arch": ["x64"]
-      }
+      "nsis"
     ],
     "icon": "icon.ico",
-    "requestedExecutionLevel": "requireAdministrator",
-    "artifactName": "${productName}-Setup-${version}.${ext}",
-    "publisherName": "CalmWeb",
-    "verifyUpdateCodeSignature": false,
-    "rfc3161TimeStampServer": "http://timestamp.digicert.com",
-    "timeStampServer": "http://timestamp.digicert.com",
-    "signDlls": false
+    "requestedExecutionLevel": "requireAdministrator"
   },
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": true,
-    "allowElevation": true,
-    "perMachine": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "shortcutName": "CalmWeb",
-    "menuCategory": "Security",
     "include": "installer.nsh",
     "installerIcon": "icon.ico",
     "uninstallerIcon": "icon.ico",
-    "installerHeader": "icon.ico",
-    "installerHeaderIcon": "icon.ico",
     "license": "LICENSE.txt",
     "warningsAsErrors": false,
+    "perMachine": true,
+    "allowElevation": true,
     "runAfterFinish": false,
     "displayLanguageSelector": false,
     "installerLanguages": ["fr_FR"],
     "language": "2060",
     "deleteAppDataOnUninstall": false,
     "differentialPackage": true,
-    "packElevateHelper": true,
-    "unicode": true,
-    "multiLanguageInstaller": false,
-    "artifactName": "${productName}-Setup-${version}.${ext}",
-    "uninstallDisplayName": "CalmWeb v${version} Enterprise"
-  },
-  "publish": {
-    "provider": "github",
-    "owner": "ostend972",
-    "repo": "test",
-    "releaseType": "release"
-  },
-  "extraMetadata": {
-    "version": "1.0.15",
-    "description": "Solution de protection web niveau Enterprise (9.8/10) avec URLhaus API, Géo-Blocking et Behavior Analyzer",
-    "author": "CalmWeb Team",
-    "homepage": "https://github.com/ostend972/test"
+    "packElevateHelper": true
   }
 }

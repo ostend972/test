@@ -4,6 +4,7 @@ import { getDashboardStats } from '../../services/api';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { RealtimeEvent, DashboardStats } from '../../types';
 import { Card } from '../ui/Card';
+// v2.0 - 4 cartes statistiques
 
 const TrendIndicator: React.FC<{ trend: number }> = ({ trend }) => {
     const isUp = trend > 0;
@@ -88,16 +89,21 @@ export const StatsCards: React.FC = () => {
     if (isError) return <Card className="bg-danger/10 text-danger"><p>Erreur de chargement des statistiques: {error.message}</p></Card>;
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <StatCard 
-                title="Bloqués aujourd'hui" 
-                value={stats?.blockedToday.value ?? 0} 
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard
+                title="Bloqués aujourd'hui"
+                value={stats?.blockedToday.value ?? 0}
                 trend={stats?.blockedToday.trend}
-                icon={<ShieldIcon />} 
+                icon={<ShieldIcon />}
+            />
+            <StatCard
+                title="Autorisés aujourd'hui"
+                value={stats?.allowedToday ?? 0}
+                icon={<BarChartIcon />}
             />
             <StatCard title="Total bloqués" value={stats?.totalBlocked ?? 0} icon={<BarChartIcon />} />
-            <StatCard 
-                title="Dernière menace" 
+            <StatCard
+                title="Dernière menace"
                 value={stats?.lastThreat?.domain ?? 'Aucune'}
                 description={stats?.lastThreat ? `à ${new Date(stats.lastThreat.timestamp).toLocaleTimeString('fr-FR')}` : 'Aucune menace récente'}
                 icon={<ClockIcon />}

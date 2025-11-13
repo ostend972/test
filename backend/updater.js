@@ -24,18 +24,16 @@ class UpdateManager {
    * Configure electron-updater
    */
   setupAutoUpdater() {
-    // Configuration - Mise à jour silencieuse
-    autoUpdater.autoDownload = true; // Télécharger automatiquement
-    autoUpdater.autoInstallOnAppQuit = true; // Installer automatiquement à la fermeture
-    autoUpdater.allowDowngrade = false; // Ne pas downgrader
-    autoUpdater.disableWebInstaller = true; // Pas d'installateur web
+    // Configuration
+    autoUpdater.autoDownload = false; // Ne pas télécharger automatiquement
+    autoUpdater.autoInstallOnAppQuit = true; // Installer à la fermeture
 
     // Logs
     autoUpdater.logger = {
       info: (message) => logger.info(`[AutoUpdater] ${message}`),
       warn: (message) => logger.warn(`[AutoUpdater] ${message}`),
       error: (message) => logger.error(`[AutoUpdater] ${message}`),
-      debug: (message) => logger.info(`[AutoUpdater] ${message}`)
+      debug: (message) => logger.debug(`[AutoUpdater] ${message}`)
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -49,9 +47,8 @@ class UpdateManager {
 
       logger.info(`Mise à jour disponible: v${info.version}`);
       logger.info(`Taille: ${(info.files[0].size / 1024 / 1024).toFixed(2)} MB`);
-      logger.info('Téléchargement automatique en cours...');
 
-      // Notifier le renderer (optionnel, pour le dashboard)
+      // Notifier le renderer
       if (this.mainWindow) {
         this.mainWindow.webContents.send('update-available', {
           version: info.version,
@@ -62,9 +59,8 @@ class UpdateManager {
         });
       }
 
-      // Mode silencieux : pas de notification, téléchargement automatique
-      // Décommentez la ligne suivante pour afficher une notification :
-      // this.showUpdateNotification(info);
+      // Afficher une notification
+      this.showUpdateNotification(info);
     });
 
     // Pas de mise à jour disponible
@@ -95,7 +91,6 @@ class UpdateManager {
     // Mise à jour téléchargée
     autoUpdater.on('update-downloaded', (info) => {
       logger.info('Mise à jour téléchargée, prête à installer');
-      logger.info('Installation automatique à la fermeture de l\'application');
 
       if (this.mainWindow) {
         this.mainWindow.webContents.send('update-downloaded', {
@@ -103,10 +98,8 @@ class UpdateManager {
         });
       }
 
-      // Mode silencieux : pas de prompt, installation automatique à la fermeture
-      // L'installation se fera automatiquement grâce à autoInstallOnAppQuit: true
-      // Décommentez la ligne suivante pour afficher un prompt :
-      // this.showInstallPrompt(info);
+      // Demander si on installe maintenant
+      this.showInstallPrompt(info);
     });
 
     // Erreur

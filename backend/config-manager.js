@@ -37,17 +37,13 @@ class ConfigManager {
       blockNonStandardPorts: true,
       blockRemoteDesktop: true,
 
-      // Ports autorisés (configurables)
-      allowedPorts: [80, 443, 3478, 5060, 5061, 8080, 8443],
-
       // Proxy
       proxyPort: 8081,
       proxyHost: '127.0.0.1',
 
       // Sources de blocklists
       blocklistSources: {
-        urlhaus: true,           // URLhaus (abuse.ch) - Hosts format
-        urlhausRecent: true,     // URLhaus Recent URLs (CSV)
+        urlhaus: true,           // URLhaus (abuse.ch)
         stevenBlack: true,        // StevenBlack/hosts
         hageziUltimate: true,     // HaGeZi Ultimate
         phishingArmy: true,       // Phishing Army
@@ -57,15 +53,11 @@ class ConfigManager {
       // URLs des sources
       blocklistURLs: {
         urlhaus: 'https://urlhaus.abuse.ch/downloads/hostfile/',
-        urlhausRecent: 'https://urlhaus.abuse.ch/downloads/csv_recent/',
         stevenBlack: 'https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts',
         hageziUltimate: 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/ultimate.txt',
         phishingArmy: 'https://phishing.army/download/phishing_army_blocklist.txt',
         easylistFR: 'https://raw.githubusercontent.com/easylist/listefr/master/hosts.txt'
       },
-
-      // URL de la blocklist communautaire (associée à blockRemoteDesktop)
-      communityBlocklistURL: 'https://raw.githubusercontent.com/Tontonjo/calmweb/refs/heads/main/filters/blocklist.txt',
 
       // Whitelist GitHub
       whitelistGitHubURL: 'https://raw.githubusercontent.com/Tontonjo/calmweb/main/filters/whitelist.txt',
@@ -329,13 +321,8 @@ class ConfigManager {
   getBlocklistFormat(sourceName) {
     // Format hosts: urlhaus, stevenBlack, easylistFR
     // Format simple: hageziUltimate, phishingArmy
-    // Format CSV: urlhausRecent
     const hostsFormat = ['urlhaus', 'stevenBlack', 'easylistFR'];
-    const csvFormat = ['urlhausRecent'];
-
-    if (hostsFormat.includes(sourceName)) return 'hosts';
-    if (csvFormat.includes(sourceName)) return 'csv';
-    return 'simple';
+    return hostsFormat.includes(sourceName) ? 'hosts' : 'simple';
   }
 
   /**

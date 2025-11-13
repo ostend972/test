@@ -34,9 +34,16 @@ export interface Config {
   protectionEnabled: boolean;
   blockDirectIPs: boolean;
   blockRemoteDesktop: boolean;
+  blockHTTPTraffic?: boolean;
+  blockNonStandardPorts?: boolean;
   updateInterval: number;
   proxyPort: number;
   blocklistSources: Record<string, boolean>;
+  whitelistGitHubURL?: string;
+  usefulDomainsURL?: string;
+  enableUsefulDomains?: boolean;
+  whitelistGitHubLoaded?: boolean;
+  usefulDomainsLoaded?: boolean;
 }
 
 export interface ChartDataPoint {

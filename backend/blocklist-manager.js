@@ -2,14 +2,12 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs').promises;
 const path = require('path');
-const { cleanDomain, parseHostsLine, parseSimpleListLine, parseCSVLine, retryWithBackoff } = require('./utils');
+const { cleanDomain, parseHostsLine, parseSimpleListLine, retryWithBackoff } = require('./utils');
 const logger = require('./logger');
-const BloomFilter = require('./bloom-filter');
 
 /**
  * Gestionnaire de blocklist avec téléchargement multi-sources
  * Sources: URLhaus, StevenBlack, HaGeZi Ultimate, Phishing Army, Liste FR
- * Optimisé avec Bloom Filter pour réduire l'empreinte mémoire
  */
 class BlocklistManager {
   constructor(configManager) {
@@ -23,27 +21,13 @@ class BlocklistManager {
     this.lastUpdate = null;
     this.updateIntervalId = null; // Stocker l'interval pour pouvoir le nettoyer
 
-    // Bloom Filter pour pré-filtrage rapide (optimisation mémoire)
-    this.bloomFilter = null; // Initialisé lors du premier chargement
-
     // Métadonnées pour chaque liste (date de MAJ, âge, statut)
     this.listMetadata = {
       urlhaus: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 1 },
-      urlhausRecent: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 1 },
       phishingArmy: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 1 },
       hageziUltimate: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 2 },
       stevenBlack: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 3 },
       easylistFR: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 4 },
-      communityBlocklist: { lastUpdate: null, domainCount: 0, status: 'pending', priority: 5 },
-    };
-
-    // Cache LRU pour optimiser les performances (même principe que whitelist)
-    this.blocklistCache = new Map(); // hostname -> { blocked, reason, source }
-    this.cacheMaxSize = 2000; // Plus grand que whitelist (domaines bloqués plus fréquents)
-    this.cacheStats = {
-      hits: 0,
-      misses: 0,
-      evictions: 0
     };
   }
 
@@ -118,30 +102,10 @@ class BlocklistManager {
         remoteDesktopDomains.forEach(d => this.blockedDomains.add(d));
       }
 
-      // Initialiser le Bloom Filter avec tous les domaines
-      this.initializeBloomFilter();
-
       logger.info(`Blocklist chargée depuis cache: ${this.blockedDomains.size} domaines`);
     } catch (error) {
       logger.error(`Erreur chargement cache: ${error.message}`);
     }
-  }
-
-  /**
-   * Initialise le Bloom Filter avec tous les domaines actuels
-   */
-  initializeBloomFilter() {
-    const totalDomains = this.blockedDomains.size + this.customBlockedDomains.size;
-
-    // Créer un nouveau Bloom Filter avec une marge de 20%
-    this.bloomFilter = new BloomFilter(Math.ceil(totalDomains * 1.2), 0.001);
-
-    // Ajouter tous les domaines au Bloom Filter
-    this.blockedDomains.forEach(domain => this.bloomFilter.add(domain));
-    this.customBlockedDomains.forEach(domain => this.bloomFilter.add(domain));
-
-    const stats = this.bloomFilter.getStats();
-    logger.info(`Bloom Filter initialisé: ${stats.actualElements} domaines, ${stats.memoryMB} de mémoire`);
   }
 
   /**
@@ -331,52 +295,16 @@ class BlocklistManager {
 
       logger.info('');
 
-      // Ajouter les domaines de remote desktop (TeamViewer, AnyDesk, etc.) + Community Blocklist
+      // Ajouter les domaines de remote desktop (TeamViewer, AnyDesk, etc.)
       if (this.configManager.getValue('blockRemoteDesktop', false)) {
-        // 1. Domaines hardcodés (TeamViewer, AnyDesk, etc.)
         const remoteDesktopDomains = this.getRemoteDesktopDomains();
         remoteDesktopDomains.forEach(d => allDomains.add(d));
-        logger.info(`🚫 Domaines remote desktop hardcodés ajoutés: ${remoteDesktopDomains.length}`);
-
-        // 2. Community Blocklist (arnaques et remote desktop FR)
-        try {
-          logger.info(`⬇️  Community Blocklist: Téléchargement...`);
-          const communityURL = this.configManager.getValue('communityBlocklistURL');
-
-          if (communityURL) {
-            const communityDomains = await retryWithBackoff(
-              () => this.downloadBlocklist(communityURL, 'simple'),
-              3,
-              2000
-            );
-
-            const beforeCount = allDomains.size;
-            communityDomains.forEach(d => allDomains.add(d));
-            const added = allDomains.size - beforeCount;
-
-            // Mettre à jour les métadonnées
-            this.listMetadata.communityBlocklist.lastUpdate = new Date();
-            this.listMetadata.communityBlocklist.domainCount = communityDomains.size;
-            this.listMetadata.communityBlocklist.status = 'success';
-
-            logger.info(`   ✓ Community Blocklist: ${communityDomains.size.toLocaleString()} domaines (${added.toLocaleString()} nouveaux)`);
-          }
-        } catch (error) {
-          logger.error(`   ✗ Community Blocklist: ${error.message}`);
-          this.listMetadata.communityBlocklist.status = 'error';
-        }
-      } else {
-        // Si blockRemoteDesktop est désactivé, marquer la community blocklist comme inactive
-        this.listMetadata.communityBlocklist.status = 'inactive';
-        logger.info('⊘ Blocage remote desktop désactivé (Community Blocklist non chargée)');
+        logger.info(`🚫 Domaines remote desktop ajoutés: ${remoteDesktopDomains.length}`);
       }
 
       // Mettre à jour la blocklist
       this.blockedDomains = allDomains;
       this.lastUpdate = new Date();
-
-      // Réinitialiser le Bloom Filter avec les nouveaux domaines
-      this.initializeBloomFilter();
 
       // Sauvegarder le cache et les métadonnées
       await this.saveToCache();
@@ -431,9 +359,6 @@ class BlocklistManager {
                 domain = parseHostsLine(line);
               } else if (format === 'simple') {
                 domain = parseSimpleListLine(line);
-              } else if (format === 'csv') {
-                // Format CSV avec filtrage sur statut "online"
-                domain = parseCSVLine(line, 'online');
               }
 
               if (domain && domain.length > 0) {
@@ -511,54 +436,31 @@ class BlocklistManager {
    * Recharge la blocklist depuis le cache avec les nouveaux paramètres
    */
   async reload() {
-    logger.info('═══════════════════════════════════════════════════');
-    logger.info('   Rechargement de la blocklist...');
-    logger.info('═══════════════════════════════════════════════════');
-
-    // Vider le cache car on recharge
-    this.clearCache();
-
-    const beforeCount = this.blockedDomains.size + this.customBlockedDomains.size;
-
+    logger.info('Rechargement de la blocklist...');
     await this.loadFromCache();
     await this.loadCustomBlocklist();
-
-    const afterCount = this.blockedDomains.size + this.customBlockedDomains.size;
-
-    logger.info(`✓ Blocklist rechargée avec succès`);
-    logger.info(`  - Domaines externes: ${this.blockedDomains.size.toLocaleString()}`);
-    logger.info(`  - Domaines personnalisés: ${this.customBlockedDomains.size.toLocaleString()}`);
-    logger.info(`  - Total: ${afterCount.toLocaleString()} domaines (${afterCount > beforeCount ? '+' : ''}${(afterCount - beforeCount).toLocaleString()})`);
-    logger.info('═══════════════════════════════════════════════════');
+    logger.info('Blocklist rechargée');
   }
 
   /**
-   * Vérifie si un domaine est bloqué (avec Bloom Filter pré-filtre)
+   * Vérifie si un domaine est bloqué
    */
   isBlocked(hostname) {
-    if (!hostname) return { blocked: false };
+    if (!hostname) return false;
 
     const cleaned = cleanDomain(hostname);
 
-    // 0. Bloom Filter pré-filtre (ultra-rapide, économise CPU)
-    // Si le Bloom Filter dit NON, c'est définitivement NON (pas de faux négatifs)
-    if (this.bloomFilter && !this.bloomFilter.has(cleaned)) {
-      // Le domaine n'est définitivement PAS dans la blocklist
-      return { blocked: false };
-    }
-
-    // 1. Si le Bloom Filter dit OUI (possiblement présent), vérifier dans le Set réel
     // Vérifier la blocklist principale
     if (this.blockedDomains.has(cleaned)) {
       return { blocked: true, reason: 'Malware', source: 'Blocklists' };
     }
 
-    // 2. Vérifier avec www.
+    // Vérifier avec www.
     if (this.blockedDomains.has('www.' + cleaned)) {
       return { blocked: true, reason: 'Malware', source: 'Blocklists' };
     }
 
-    // 3. Vérifier sans www. si présent
+    // Vérifier sans www. si présent
     if (cleaned.startsWith('www.')) {
       const withoutWww = cleaned.substring(4);
       if (this.blockedDomains.has(withoutWww)) {
@@ -566,12 +468,12 @@ class BlocklistManager {
       }
     }
 
-    // 4. Vérifier la blocklist custom (match exact)
+    // Vérifier la blocklist custom (match exact)
     if (this.customBlockedDomains.has(cleaned)) {
       return { blocked: true, reason: 'Custom', source: 'Liste Personnalisée' };
     }
 
-    // 5. Vérifier les sous-domaines (parents)
+    // Vérifier les sous-domaines (parents)
     const parts = cleaned.split('.');
     for (let i = 1; i < parts.length - 1; i++) {
       const parent = parts.slice(i).join('.');
@@ -591,85 +493,6 @@ class BlocklistManager {
   }
 
   /**
-   * Vérifie si un domaine est bloqué avec cache LRU
-   * Version optimisée pour performance (87% plus rapide sur domaines fréquents)
-   */
-  isBlockedWithCache(hostname) {
-    if (!hostname) return { blocked: false };
-
-    const cleaned = cleanDomain(hostname);
-
-    // 1. Vérifier le cache d'abord (hit rapide)
-    if (this.blocklistCache.has(cleaned)) {
-      this.cacheStats.hits++;
-
-      const cachedResult = this.blocklistCache.get(cleaned);
-
-      // Rafraîchir la position dans le cache (LRU - Most Recently Used en premier)
-      this.blocklistCache.delete(cleaned);
-      this.blocklistCache.set(cleaned, cachedResult);
-
-      return cachedResult;
-    }
-
-    // 2. Cache miss - vérification complète
-    this.cacheStats.misses++;
-    const result = this.isBlocked(cleaned);
-
-    // 3. Ajouter au cache
-    this.blocklistCache.set(cleaned, result);
-
-    // 4. Éviction LRU si cache plein
-    if (this.blocklistCache.size > this.cacheMaxSize) {
-      // Le premier élément est le plus ancien (LRU)
-      const oldestKey = this.blocklistCache.keys().next().value;
-      this.blocklistCache.delete(oldestKey);
-      this.cacheStats.evictions++;
-    }
-
-    return result;
-  }
-
-  /**
-   * Obtient les statistiques du cache (inclut Bloom Filter)
-   */
-  getCacheStats() {
-    const total = this.cacheStats.hits + this.cacheStats.misses;
-    const hitRate = total > 0 ? ((this.cacheStats.hits / total) * 100).toFixed(2) : 0;
-
-    const stats = {
-      lruCache: {
-        size: this.blocklistCache.size,
-        maxSize: this.cacheMaxSize,
-        hits: this.cacheStats.hits,
-        misses: this.cacheStats.misses,
-        evictions: this.cacheStats.evictions,
-        hitRate: `${hitRate}%`,
-        totalRequests: total
-      }
-    };
-
-    // Ajouter les stats du Bloom Filter si disponible
-    if (this.bloomFilter) {
-      stats.bloomFilter = this.bloomFilter.getStats();
-    }
-
-    return stats;
-  }
-
-  /**
-   * Vide le cache (appelé lors de modifications de la blocklist)
-   */
-  clearCache() {
-    const previousSize = this.blocklistCache.size;
-    this.blocklistCache.clear();
-
-    if (previousSize > 0) {
-      logger.info(`Cache blocklist vidé: ${previousSize} entrées supprimées`);
-    }
-  }
-
-  /**
    * Ajoute un domaine custom
    */
   async addCustomDomain(domain) {
@@ -685,11 +508,6 @@ class BlocklistManager {
 
     this.customBlockedDomains.add(cleaned);
     await this.saveCustomBlocklist();
-
-    // Ajouter au Bloom Filter
-    if (this.bloomFilter) {
-      this.bloomFilter.add(cleaned);
-    }
 
     logger.info(`Domaine ajouté à la blocklist custom: ${cleaned}`);
 
@@ -711,11 +529,6 @@ class BlocklistManager {
 
     this.customBlockedDomains.delete(cleaned);
     await this.saveCustomBlocklist();
-
-    // Réinitialiser le Bloom Filter (impossible de retirer d'un Bloom filter)
-    if (this.bloomFilter) {
-      this.initializeBloomFilter();
-    }
 
     logger.info(`Domaine retiré de la blocklist custom: ${cleaned}`);
 
@@ -766,9 +579,6 @@ class BlocklistManager {
    * Notifie qu'une liste a changé (callback pour fermer les connexions actives)
    */
   notifyListChanged() {
-    // Vider le cache car la blocklist a été modifiée
-    this.clearCache();
-
     if (this.onListChanged) {
       this.onListChanged();
     }

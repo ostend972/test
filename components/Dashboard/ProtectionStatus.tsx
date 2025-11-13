@@ -29,6 +29,7 @@ export const ProtectionStatus: React.FC = () => {
     const { data, isLoading, isError } = useQuery({
         queryKey: ['protectionStatusDetails'],
         queryFn: getProtectionStatusDetails,
+        refetchInterval: 10000, // Rafraîchir toutes les 10 secondes
     });
 
     return (

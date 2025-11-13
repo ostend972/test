@@ -1,0 +1,5 @@
+{
+  "name": "CalmWeb Dashboard",
+  "description": "A modern and accessible dashboard to monitor and configure the CalmWeb internet security proxy, designed to protect vulnerable users from malicious sites, scams, and malware.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,5 @@
+(index):64 cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation
+(anonymous) @ (index):64
+index-BYVtg0iz-1762822032883.js:41 [BlockChart] data: undefined isLoading: true isError: false error: null
+index-BYVtg0iz-1762822032883.js:41 [BlockChart] data: Array(24) isLoading: false isError: false error: null
+index-BYVtg0iz-1762822032883.js:41 [BlockChart] data: Array(24) isLoading: false isError: false error: null

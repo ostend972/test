@@ -95,6 +95,14 @@ export const importBlocklist = async (file: File): Promise<{ message: string }> 
   return { message: `Importation réussie. ${result.imported || 0} domaines ajoutés.` };
 };
 
+export const forceReloadWhitelist = async (): Promise<{ success: boolean; message: string; added: number }> => {
+  return await api().forceReloadWhitelist();
+};
+
+export const forceReloadUsefulDomains = async (): Promise<{ success: boolean; message: string; added: number }> => {
+  return await api().forceReloadUsefulDomains();
+};
+
 // --- CONFIG ---
 export const getConfig = async (): Promise<Config> => {
   return await api().getConfig();

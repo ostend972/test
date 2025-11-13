@@ -1,11 +1,11 @@
 {
   "name": "calmweb",
-  "version": "1.0.15",
-  "description": "Application de protection web niveau Enterprise (9.8/10) avec proxy de filtrage intelligent, threat intelligence temps réel (URLhaus API), géo-blocking et détection comportementale. Protection avancée contre phishing, malware, arnaques, bots et scanning.",
+  "version": "1.0.0",
+  "description": "Application de protection web complète avec proxy de filtrage, blocage de sites malveillants, arnaques et publicités. Protège les utilisateurs contre le phishing, malware et logiciels de contrôle à distance.",
   "main": "main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ostend972/test.git"
+    "url": "https://github.com/VOTRE_USERNAME/calmweb.git"
   },
   "scripts": {
     "start": "electron .",
@@ -26,8 +26,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "ostend972",
-      "repo": "test",
+      "owner": "VOTRE_USERNAME",
+      "repo": "calmweb",
       "releaseType": "release"
     },
     "files": [
@@ -80,13 +80,7 @@
     "web-filter",
     "malware-protection",
     "ad-blocker",
-    "parental-control",
-    "threat-intelligence",
-    "geo-blocking",
-    "bot-detection",
-    "behavioral-analysis",
-    "urlhaus",
-    "enterprise-security"
+    "parental-control"
   ],
   "author": "CalmWeb Team",
   "license": "GPL-3.0",

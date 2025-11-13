@@ -58,12 +58,40 @@ class GeoBlocker {
   }
 
   /**
+   * Vérifie si une IP est privée/locale
+   * @param {string} ip
+   * @returns {boolean}
+   */
+  isPrivateIP(ip) {
+    if (!ip || ip === 'unknown') return true;
+
+    // RFC 1918 + loopback + link-local + IPv6 private
+    const privateRanges = [
+      /^127\./,                          // Loopback
+      /^10\./,                           // RFC 1918 - 10.0.0.0/8
+      /^192\.168\./,                     // RFC 1918 - 192.168.0.0/16
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./,  // RFC 1918 - 172.16.0.0/12
+      /^169\.254\./,                     // Link-local - 169.254.0.0/16
+      /^::1$/,                           // IPv6 loopback
+      /^fc00:/i,                         // IPv6 Unique Local - fc00::/7
+      /^fd00:/i,                         // IPv6 Unique Local - fd00::/8
+      /^fe80:/i,                         // IPv6 Link-local - fe80::/10
+      /^::ffff:127\./i,                  // IPv4-mapped IPv6 loopback
+      /^::ffff:10\./i,                   // IPv4-mapped IPv6 private
+      /^::ffff:192\.168\./i,             // IPv4-mapped IPv6 private
+      /^::ffff:172\.(1[6-9]|2[0-9]|3[0-1])\./i  // IPv4-mapped IPv6 private
+    ];
+
+    return privateRanges.some(regex => regex.test(ip));
+  }
+
+  /**
    * Vérifie si une IP doit être bloquée
    * @param {string} ip
    * @returns {Promise<object>} { blocked: boolean, country: string, reason: string }
    */
   async checkIP(ip) {
-    if (!ip || ip === 'unknown' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) {
+    if (this.isPrivateIP(ip)) {
       // IPs locales/privées ne sont jamais bloquées
       return { blocked: false };
     }

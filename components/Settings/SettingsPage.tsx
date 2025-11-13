@@ -142,9 +142,52 @@ export const SettingsPage: React.FC = () => {
     const { name, value } = e.target;
     setFormState(prev => ({ ...prev, [name]: name === 'proxyPort' || name === 'updateInterval' ? Number(value) : value }));
   };
-  
+
+  const validatePort = (port: number | undefined): string | null => {
+    if (!port) {
+      return 'Le port du proxy est requis';
+    }
+
+    // Vérifier que c'est un nombre valide
+    if (isNaN(port) || !Number.isInteger(port)) {
+      return 'Le port doit être un nombre entier';
+    }
+
+    // Ports réservés (0-1023) interdits
+    if (port < 1024) {
+      return 'Le port doit être supérieur à 1023 (ports réservés)';
+    }
+
+    // Port maximum
+    if (port > 65535) {
+      return 'Le port doit être inférieur à 65536';
+    }
+
+    // Ports communs à éviter (pour éviter les conflits)
+    const commonPorts = [3000, 3306, 5432, 5000, 8000, 8888, 9000];
+    if (commonPorts.includes(port)) {
+      return `Le port ${port} est couramment utilisé. Recommandé : 8080 ou 8081`;
+    }
+
+    return null; // Validation OK
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Valider le port avant soumission
+    const portError = validatePort(formState.proxyPort);
+    if (portError) {
+      alert(`Erreur de validation:\n${portError}`);
+      return;
+    }
+
+    // Valider l'intervalle de mise à jour
+    if (formState.updateInterval && (formState.updateInterval < 1 || formState.updateInterval > 168)) {
+      alert('L\'intervalle de mise à jour doit être entre 1 et 168 heures');
+      return;
+    }
+
     mutation.mutate(formState);
   };
 

@@ -7,7 +7,13 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { RealtimeEvent, ChartDataPoint } from '../../types';
 
 // Custom Tooltip Component for a modern look
-const CustomTooltip = ({ active, payload, label }: any) => {
+interface TooltipProps {
+    active?: boolean;
+    payload?: Array<{ value?: number }>;
+    label?: string;
+}
+
+const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
     if (active && payload && payload.length > 0 && payload[0]) {
         return (
             <div className="p-3 bg-gray-800 text-white rounded-lg shadow-lg border border-gray-700">

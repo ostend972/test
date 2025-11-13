@@ -50,7 +50,7 @@ class BehaviorAnalyzer {
       entry = {
         hourly: [],     // Timestamps des requêtes de la dernière heure
         daily: [],      // Timestamps des requêtes des dernières 24h
-        domains: new Map(), // domaine -> count pour l'heure
+        domains: new Map(), // domaine -> { count, timestamps: [] }
         firstSeen: now,
         lastSeen: now
       };
@@ -69,14 +69,25 @@ class BehaviorAnalyzer {
     entry.hourly = entry.hourly.filter(t => t > oneHourAgo);
     entry.daily = entry.daily.filter(t => t > oneDayAgo);
 
-    // Tracker le domaine
-    entry.domains.set(hostname, (entry.domains.get(hostname) || 0) + 1);
+    // Tracker le domaine avec timestamps
+    let domainEntry = entry.domains.get(hostname);
+    if (!domainEntry) {
+      domainEntry = { count: 0, timestamps: [] };
+      entry.domains.set(hostname, domainEntry);
+    }
+    domainEntry.count++;
+    domainEntry.timestamps.push(now);
 
-    // Nettoyer les domaines de plus d'une heure
-    const domainsToDelete = [];
-    for (const [domain, count] of entry.domains.entries()) {
-      // Simplification: on garde les domaines de l'heure actuelle
-      // Dans une vraie implémentation, on trackrait le timestamp par domaine
+    // Nettoyer les timestamps de domaines de plus d'une heure
+    for (const [domain, domainData] of entry.domains.entries()) {
+      // Filtrer les timestamps de plus d'une heure
+      domainData.timestamps = domainData.timestamps.filter(t => t > oneHourAgo);
+      domainData.count = domainData.timestamps.length;
+
+      // Supprimer le domaine si plus aucun timestamp récent
+      if (domainData.timestamps.length === 0) {
+        entry.domains.delete(domain);
+      }
     }
 
     // Analyser le comportement
@@ -133,9 +144,9 @@ class BehaviorAnalyzer {
     }
 
     // 5. Accès à un domaine unique de manière répétée (> 50 fois)
-    for (const [domain, count] of entry.domains.entries()) {
-      if (count > 50) {
-        reasons.push(`Accès répété à ${domain} (${count} fois)`);
+    for (const [domain, domainData] of entry.domains.entries()) {
+      if (domainData.count > 50) {
+        reasons.push(`Accès répété à ${domain} (${domainData.count} fois)`);
         severity = severity === 'critical' ? 'critical' : 'medium';
       }
     }
@@ -173,9 +184,9 @@ class BehaviorAnalyzer {
       dailyRequests: entry.daily.length,
       uniqueDomains: entry.domains.size,
       topDomains: Array.from(entry.domains.entries())
-        .sort((a, b) => b[1] - a[1])
+        .sort((a, b) => b[1].count - a[1].count)
         .slice(0, 10)
-        .map(([domain, count]) => ({ domain, count }))
+        .map(([domain, domainData]) => ({ domain, count: domainData.count }))
     };
   }
 

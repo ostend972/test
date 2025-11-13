@@ -434,19 +434,19 @@ app.whenReady().then(async () => {
     ipcMain.handle('getDashboardStats', async () => {
       try {
         const stats = logger.getStats();
-        const proxyStatus = proxy.getStatus();
+        const proxyStats = proxy.getStats(); // ✅ FIX: getStats() au lieu de getStatus()
 
         return {
           blockedToday: stats.blockedToday,
           totalBlocked: stats.totalBlocked,
           lastThreat: stats.lastThreat,
-          proxyStatus: proxyStatus.isRunning ? 'active' : 'inactive',
+          proxyStatus: proxyStats.isRunning ? 'active' : 'inactive',
           // Nouvelles métriques avancées (9.8/10)
           advanced: {
-            urlhaus: proxyStatus.urlhausAPI || { requests: 0, maliciousFound: 0, cacheHitRate: '0%' },
-            geoBlocker: proxyStatus.geoBlocker || { requests: 0, blocked: 0, cacheHitRate: '0%' },
-            behaviorAnalyzer: proxyStatus.behaviorAnalyzer || { trackedIPs: 0, suspiciousDetected: 0, totalRequests: 0 },
-            threats: proxyStatus.threats || {
+            urlhaus: proxyStats.urlhausAPI || { requests: 0, maliciousFound: 0, cacheHitRate: '0%' },
+            geoBlocker: proxyStats.geoBlocker || { requests: 0, blocked: 0, cacheHitRate: '0%' },
+            behaviorAnalyzer: proxyStats.behaviorAnalyzer || { trackedIPs: 0, suspiciousDetected: 0, totalRequests: 0 },
+            threats: proxyStats.threats || {
               invalidDomains: 0,
               dnsTunneling: 0,
               rateLimitHits: 0,

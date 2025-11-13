@@ -27,35 +27,30 @@ export default function UpdateSection() {
     const unsubscribeAvailable = window.electronAPI.onUpdateAvailable((info) => {
       setUpdateStatus('available');
       setUpdateInfo(info);
-      console.log('Mise à jour disponible:', info);
     });
 
     // Pas de mise à jour
     const unsubscribeNotAvailable = window.electronAPI.onUpdateNotAvailable(() => {
       setUpdateStatus('idle');
       setUpdateInfo(null);
-      console.log('Application à jour');
     });
 
     // Progression du téléchargement
     const unsubscribeProgress = window.electronAPI.onUpdateDownloadProgress((progress) => {
       setUpdateStatus('downloading');
       setDownloadProgress(progress.percent);
-      console.log('Progression:', progress.percent);
     });
 
     // Mise à jour téléchargée
     const unsubscribeDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
       setUpdateStatus('downloaded');
       setUpdateInfo(info);
-      console.log('Mise à jour téléchargée:', info);
     });
 
     // Erreur
     const unsubscribeError = window.electronAPI.onUpdateError((error) => {
       setUpdateStatus('error');
       setErrorMessage(error.message);
-      console.error('Erreur mise à jour:', error);
     });
 
     // Nettoyage

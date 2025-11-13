@@ -44,8 +44,6 @@ export const BlockChart = () => {
         queryFn: getChartData,
     });
 
-    console.log('[BlockChart] data:', data, 'isLoading:', isLoading, 'isError:', isError, 'error:', error);
-
     useWebSocket('stats_update', (event) => {
         if (event.type === 'blocked') {
             queryClient.setQueryData(['blockChartData'], (prevData) => {

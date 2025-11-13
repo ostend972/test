@@ -31,7 +31,6 @@ export const useWebSocket = (event, onMessage) => {
           break;
 
         default:
-          console.warn(`Unknown event type: ${event}. No handler available.`);
           setIsConnected(false);
           break;
       }
@@ -40,7 +39,6 @@ export const useWebSocket = (event, onMessage) => {
         return cleanup;
       }
     } else {
-      console.warn('Electron API for real-time events not found. Running in non-Electron environment?');
       setIsConnected(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

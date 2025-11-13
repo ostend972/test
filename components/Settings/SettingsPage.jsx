@@ -5,6 +5,7 @@ import { Card } from '../ui/Card.jsx';
 import { Button } from '../ui/Button.jsx';
 import { ToggleSwitch } from '../ui/ToggleSwitch.jsx';
 import UpdateSection from './UpdateSection.jsx';
+import { GeoBlockingSettings } from './GeoBlockingSettings.jsx';
 
 const SystemStatusIcon = ({ status }) => {
     const statusMap = {
@@ -321,7 +322,16 @@ export const SettingsPage = () => {
                       />
                   </div>
               </div>
-            
+
+            <div className="border-t border-border-color my-6"></div>
+
+            {/* Géo-Blocking */}
+            <GeoBlockingSettings
+              formState={formState}
+              handleToggleChange={handleToggleChange}
+              setFormState={setFormState}
+            />
+
             <div className="flex justify-end pt-4">
               <Button
                 type="submit"

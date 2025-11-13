@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { disableProtection } from '../../services/api';
 import { Button } from '../ui/Button';
+import { useToast } from '../ui/Toast';
 
 const Modal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: () => void; isLoading: boolean }> = ({ isOpen, onClose, onConfirm, isLoading }) => {
     if (!isOpen) return null;
@@ -30,16 +31,17 @@ const Modal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: () => v
 export const EmergencyButton: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const queryClient = useQueryClient();
-    
+    const toast = useToast();
+
     const mutation = useMutation({
         mutationFn: disableProtection,
         onSuccess: () => {
-            alert('La protection a été désactivée temporairement.');
+            toast.showWarning('La protection a été désactivée temporairement.', 6000);
             queryClient.invalidateQueries({ queryKey: ['proxyStatus'] });
             setIsModalOpen(false);
         },
         onError: (error: Error) => {
-            alert(`Erreur: ${error.message}`);
+            toast.showError(`Erreur: ${error.message}`);
             setIsModalOpen(false);
         }
     });

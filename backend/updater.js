@@ -16,6 +16,8 @@ class UpdateManager {
     this.mainWindow = mainWindow;
     this.updateAvailable = false;
     this.updateInfo = null;
+    this.updateCheckInterval = null; // Stocker l'ID de l'interval
+    this.startupTimeout = null; // Stocker l'ID du timeout initial
 
     this.setupAutoUpdater();
   }
@@ -211,17 +213,38 @@ class UpdateManager {
    * Active la vérification automatique au démarrage
    */
   enableAutoCheck(intervalHours = 24) {
+    // Nettoyer les intervals/timeouts existants pour éviter les doublons
+    this.disableAutoCheck();
+
     // Vérifier au démarrage (après 10 secondes)
-    setTimeout(() => {
+    this.startupTimeout = setTimeout(() => {
       this.checkForUpdates();
     }, 10000);
 
     // Vérifier périodiquement
-    setInterval(() => {
+    this.updateCheckInterval = setInterval(() => {
       this.checkForUpdates();
     }, intervalHours * 60 * 60 * 1000);
 
     logger.info(`Vérification automatique activée (toutes les ${intervalHours}h)`);
+  }
+
+  /**
+   * Désactive la vérification automatique
+   */
+  disableAutoCheck() {
+    // Nettoyer le timeout de démarrage
+    if (this.startupTimeout) {
+      clearTimeout(this.startupTimeout);
+      this.startupTimeout = null;
+    }
+
+    // Nettoyer l'interval périodique
+    if (this.updateCheckInterval) {
+      clearInterval(this.updateCheckInterval);
+      this.updateCheckInterval = null;
+      logger.info('Vérification automatique désactivée');
+    }
   }
 }
 

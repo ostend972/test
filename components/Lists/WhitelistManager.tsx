@@ -5,6 +5,12 @@ import { Domain } from '../../types';
 import { Card } from '../ui/Card';
 import { DomainTable } from './DomainTable';
 import { Button } from '../ui/Button';
+import { useToast } from '../ui/Toast';
+
+// Domain validation regex (RFC 1035)
+const DOMAIN_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/i;
+const MAX_DOMAIN_LENGTH = 253;
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const ConfirmationModal: React.FC<{
   isOpen: boolean;
@@ -13,15 +19,17 @@ const ConfirmationModal: React.FC<{
   domainName: string;
   isLoading: boolean;
   title: string;
-  message: string;
-}> = ({ isOpen, onClose, onConfirm, domainName, isLoading, title, message }) => {
+}> = ({ isOpen, onClose, onConfirm, domainName, isLoading, title }) => {
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" aria-modal="true" role="dialog">
             <div className="bg-white rounded-lg p-8 m-4 max-w-md w-full shadow-xl">
                 <h2 className="text-xl font-bold mb-4">{title}</h2>
-                <p className="text-text-subtle mb-6" dangerouslySetInnerHTML={{ __html: message }} />
+                <p className="text-text-subtle mb-6">
+                    Êtes-vous sûr de vouloir supprimer le domaine{' '}
+                    <strong className="font-bold">{domainName}</strong> de la liste blanche ?
+                </p>
                 <div className="flex justify-end space-x-4">
                     <Button variant="secondary" onClick={onClose} disabled={isLoading}>Annuler</Button>
                     <Button variant="danger" onClick={onConfirm} isLoading={isLoading}>Supprimer</Button>
@@ -34,6 +42,7 @@ const ConfirmationModal: React.FC<{
 
 export const WhitelistManager: React.FC = () => {
     const queryClient = useQueryClient();
+    const toast = useToast();
     const [newDomain, setNewDomain] = useState('');
     const [domainToDelete, setDomainToDelete] = useState<string | null>(null);
     const [deletingDomain, setDeletingDomain] = useState<string | null>(null);
@@ -49,47 +58,71 @@ export const WhitelistManager: React.FC = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['whitelist'] });
             setNewDomain('');
+            toast.showSuccess('Domaine ajouté à la liste blanche');
         },
         onError: (addError: Error) => {
-            alert(`Erreur lors de l'ajout du domaine : ${addError.message}`);
+            toast.showError(`Erreur lors de l'ajout : ${addError.message}`);
         }
     });
-    
+
     const deleteMutation = useMutation({
         mutationFn: deleteWhitelistDomain,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['whitelist'] });
+            toast.showSuccess('Domaine supprimé de la liste blanche');
         },
         onSettled: () => {
             setDeletingDomain(null);
         }
     });
-    
+
     const exportMutation = useMutation({
         mutationFn: exportWhitelist,
-        onError: (exportError: Error) => alert(`Erreur d'exportation: ${exportError.message}`),
+        onSuccess: () => {
+            toast.showSuccess('Liste exportée avec succès');
+        },
+        onError: (exportError: Error) => {
+            toast.showError(`Erreur d'exportation: ${exportError.message}`);
+        },
     });
-    
+
     const importMutation = useMutation({
         mutationFn: importWhitelist,
         onSuccess: (data) => {
-            alert(data.message || 'Importation réussie');
+            toast.showSuccess(data.message || 'Importation réussie');
             queryClient.invalidateQueries({ queryKey: ['whitelist'] });
         },
-        onError: (importError: Error) => alert(`Erreur d'importation: ${importError.message}`),
+        onError: (importError: Error) => {
+            toast.showError(`Erreur d'importation: ${importError.message}`);
+        },
     });
 
     const handleAddDomain = (e: React.FormEvent) => {
         e.preventDefault();
-        if (newDomain.trim()) {
-            addMutation.mutate(newDomain.trim());
+        const domain = newDomain.trim().toLowerCase();
+
+        if (!domain) {
+            toast.showWarning('Veuillez entrer un domaine');
+            return;
         }
+
+        if (domain.length > MAX_DOMAIN_LENGTH) {
+            toast.showError(`Le domaine est trop long (maximum ${MAX_DOMAIN_LENGTH} caractères)`);
+            return;
+        }
+
+        if (!DOMAIN_REGEX.test(domain)) {
+            toast.showError('Format de domaine invalide. Exemple valide: example.com');
+            return;
+        }
+
+        addMutation.mutate(domain);
     };
 
     const handleDeleteDomain = (domain: string) => {
         setDomainToDelete(domain);
     };
-    
+
     const confirmDeletion = () => {
         if (domainToDelete) {
             setDeletingDomain(domainToDelete);
@@ -97,12 +130,24 @@ export const WhitelistManager: React.FC = () => {
         }
         setDomainToDelete(null);
     };
-    
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            importMutation.mutate(file);
+        if (!file) return;
+
+        // Validate file type
+        if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
+            toast.showError('Seuls les fichiers CSV sont acceptés');
+            return;
         }
+
+        // Validate file size
+        if (file.size > MAX_FILE_SIZE) {
+            toast.showError(`Le fichier est trop volumineux (maximum ${MAX_FILE_SIZE / 1024 / 1024} MB)`);
+            return;
+        }
+
+        importMutation.mutate(file);
     };
 
     return (
@@ -156,7 +201,6 @@ export const WhitelistManager: React.FC = () => {
                 domainName={domainToDelete || ''}
                 isLoading={deleteMutation.isPending && deletingDomain === domainToDelete}
                 title="Confirmer la suppression"
-                message={`Êtes-vous sûr de vouloir supprimer le domaine <strong>${domainToDelete}</strong> de la liste blanche ?`}
             />
         </>
     );

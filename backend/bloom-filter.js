@@ -25,6 +25,10 @@ class BloomFilter {
     // Compteur d'éléments ajoutés
     this.count = 0;
 
+    // Cache pour le fill rate (optimisation performance)
+    this.cachedFillRate = 0;
+    this.fillRateDirty = true; // Indique si le cache doit être recalculé
+
     // Statistiques
     this.stats = {
       adds: 0,
@@ -91,6 +95,7 @@ class BloomFilter {
 
     this.count++;
     this.stats.adds++;
+    this.fillRateDirty = true; // Invalider le cache
   }
 
   /**
@@ -127,13 +132,21 @@ class BloomFilter {
   clear() {
     this.bitArray.fill(0);
     this.count = 0;
+    this.cachedFillRate = 0;
+    this.fillRateDirty = false; // Cache est à jour (0%)
   }
 
   /**
-   * Calcule le taux de remplissage du filtre
+   * Calcule le taux de remplissage du filtre (avec cache pour performance)
    * @returns {number} Entre 0 et 1
    */
   getFillRate() {
+    // Utiliser le cache si disponible
+    if (!this.fillRateDirty) {
+      return this.cachedFillRate;
+    }
+
+    // Recalculer si le cache est invalide
     let setBits = 0;
     for (let i = 0; i < this.bitArray.length; i++) {
       for (let j = 0; j < 8; j++) {
@@ -142,7 +155,10 @@ class BloomFilter {
         }
       }
     }
-    return setBits / this.size;
+
+    this.cachedFillRate = setBits / this.size;
+    this.fillRateDirty = false;
+    return this.cachedFillRate;
   }
 
   /**
@@ -198,6 +214,7 @@ class BloomFilter {
       throw new Error('Buffer size mismatch');
     }
     this.bitArray = new Uint8Array(buffer);
+    this.fillRateDirty = true; // Invalider le cache après import
   }
 }
 

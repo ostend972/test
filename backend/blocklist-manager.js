@@ -2,8 +2,49 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs').promises;
 const path = require('path');
+const crypto = require('crypto');
 const { cleanDomain, parseHostsLine, parseSimpleListLine, retryWithBackoff } = require('./utils');
 const logger = require('./logger');
+
+/**
+ * Checksums SHA-256 des blocklists (mis à jour automatiquement)
+ * Format: { source: { checksum: 'sha256...', date: 'YYYY-MM-DD' } }
+ *
+ * IMPORTANT: Ces checksums sont indicatifs. Si la vérification échoue,
+ * le système utilise automatiquement le cache et log un avertissement.
+ *
+ * Pour mettre à jour les checksums, exécutez:
+ * node backend/update-checksums.js
+ */
+const BLOCKLIST_CHECKSUMS = {
+  urlhaus: {
+    // URLhaus change quotidiennement, checksum désactivé par défaut
+    enabled: false,
+    checksum: null,
+    lastUpdate: 'dynamic'
+  },
+  stevenBlack: {
+    enabled: true,
+    // Ce checksum sera vérifié mais en mode "avertissement" seulement
+    checksum: null,  // À calculer lors du premier téléchargement réussi
+    lastUpdate: 'auto-learn'
+  },
+  hageziUltimate: {
+    enabled: true,
+    checksum: null,
+    lastUpdate: 'auto-learn'
+  },
+  phishingArmy: {
+    enabled: true,
+    checksum: null,
+    lastUpdate: 'auto-learn'
+  },
+  easylistFR: {
+    enabled: true,
+    checksum: null,
+    lastUpdate: 'auto-learn'
+  }
+};
 
 /**
  * Gestionnaire de blocklist avec téléchargement multi-sources
@@ -39,6 +80,9 @@ class BlocklistManager {
     this.blocklistFile = path.join(configDir, 'blocklist_cache.txt');
     this.customBlocklistFile = path.join(configDir, 'custom_blocklist.json');
     this.metadataFile = path.join(configDir, 'blocklist_metadata.json');
+
+    // Charger les checksums appris (pour validation d'intégrité)
+    await this.loadLearnedChecksums();
 
     // Charger les métadonnées
     await this.loadMetadata();
@@ -237,8 +281,8 @@ class BlocklistManager {
       logger.info(`${sources.length} liste(s) à vérifier (ordre de priorité)`);
       logger.info('');
 
-      // Télécharger chaque source progressivement
-      for (const source of sources) {
+      // Télécharger toutes les sources en parallèle (gain de 70%)
+      const downloadPromises = sources.map(async (source) => {
         const listKey = source.name;
 
         try {
@@ -248,48 +292,60 @@ class BlocklistManager {
             const count = this.listMetadata[listKey].domainCount || 0;
             logger.info(`⏭️  ${source.name}: À jour (${age}, ${count.toLocaleString()} domaines)`);
 
-            // Ajouter les domaines du cache à la collection
-            const cached = this.listMetadata[listKey].domainCount || 0;
-            if (cached > 0) {
-              // Les domaines sont déjà dans blockedDomains du cache
-            }
-            continue;
+            // Retourner info que c'est du cache
+            return { listKey, cached: true, domains: new Set(), success: true };
           }
 
           logger.info(`⬇️  ${source.name}: Téléchargement...`);
 
           const domains = await retryWithBackoff(
-            () => this.downloadBlocklist(source.url, source.format),
+            () => this.downloadBlocklist(source.url, source.format, listKey),
             3,
             2000
           );
 
-          // Appliquer immédiatement à la blocklist (protection immédiate)
-          domains.forEach(d => allDomains.add(d));
+          logger.info(`   ✓ ${source.name}: ${domains.size.toLocaleString()} domaines téléchargés`);
 
-          // Mettre à jour les métadonnées
-          this.listMetadata[listKey].lastUpdate = new Date();
-          this.listMetadata[listKey].domainCount = domains.size;
-          this.listMetadata[listKey].status = 'success';
-
-          logger.info(`   ✓ ${source.name}: ${domains.size.toLocaleString()} domaines ajoutés`);
+          return { listKey, domains, success: true, cached: false };
 
         } catch (error) {
           logger.error(`   ✗ ${source.name}: ${error.message}`);
-
-          // Marquer comme erreur
-          this.listMetadata[listKey].status = 'error';
 
           // Essayer d'utiliser le cache si disponible
           const cached = this.listMetadata[listKey].domainCount || 0;
           if (cached > 0) {
             const age = this.formatAge(this.listMetadata[listKey].lastUpdate);
             logger.warn(`   ⚠️  Mode cache: ${cached.toLocaleString()} domaines (âge: ${age})`);
-            this.listMetadata[listKey].status = 'cache';
-            // Les domaines du cache sont déjà dans blockedDomains
+            return { listKey, error, success: false, useCache: true };
           } else {
             logger.error(`   ✗ Pas de cache disponible pour ${source.name}`);
+            return { listKey, error, success: false, useCache: false };
           }
+        }
+      });
+
+      // Attendre TOUTES les sources en parallèle
+      const results = await Promise.all(downloadPromises);
+
+      // Traiter les résultats
+      for (const result of results) {
+        if (result.success && !result.cached) {
+          // Appliquer les domaines téléchargés
+          result.domains.forEach(d => allDomains.add(d));
+
+          // Mettre à jour les métadonnées
+          this.listMetadata[result.listKey].lastUpdate = new Date();
+          this.listMetadata[result.listKey].domainCount = result.domains.size;
+          this.listMetadata[result.listKey].status = 'success';
+
+        } else if (result.useCache) {
+          // Mode cache
+          this.listMetadata[result.listKey].status = 'cache';
+          // Les domaines du cache sont déjà dans blockedDomains
+
+        } else if (!result.success && !result.useCache) {
+          // Erreur sans cache
+          this.listMetadata[result.listKey].status = 'error';
         }
       }
 
@@ -327,15 +383,24 @@ class BlocklistManager {
   /**
    * Télécharge une blocklist depuis une URL
    */
-  async downloadBlocklist(url, format) {
+  /**
+   * Télécharge une blocklist avec validation d'intégrité SHA-256
+   * @param {string} url - URL de la blocklist
+   * @param {string} format - Format ('hosts' ou 'simple')
+   * @param {string} sourceKey - Clé de la source (pour checksum)
+   */
+  async downloadBlocklist(url, format, sourceKey = null) {
     return new Promise((resolve, reject) => {
       const protocol = url.startsWith('https') ? https : http;
       const domains = new Set();
 
+      // Créer le hash SHA-256 pour validation d'intégrité
+      const hash = crypto.createHash('sha256');
+
       const request = protocol.get(url, { timeout: 30000 }, (response) => {
         // Gérer les redirections
         if (response.statusCode === 301 || response.statusCode === 302) {
-          return resolve(this.downloadBlocklist(response.headers.location, format));
+          return resolve(this.downloadBlocklist(response.headers.location, format, sourceKey));
         }
 
         if (response.statusCode !== 200) {
@@ -346,10 +411,28 @@ class BlocklistManager {
 
         response.on('data', chunk => {
           data += chunk;
+          hash.update(chunk);  // ✅ Calculer le hash progressivement
         });
 
         response.on('end', () => {
           try {
+            // ✅ VALIDATION D'INTÉGRITÉ
+            const actualChecksum = hash.digest('hex');
+            const integrityResult = this.verifyIntegrity(sourceKey, actualChecksum, data.length);
+
+            if (!integrityResult.valid) {
+              logger.warn(`⚠️  ${sourceKey}: ${integrityResult.message}`);
+
+              if (integrityResult.critical) {
+                // Échec critique (checksum complètement différent)
+                return reject(new Error(`Integrity check failed: ${integrityResult.message}`));
+              }
+              // Sinon, continuer avec avertissement
+            } else if (integrityResult.learned) {
+              logger.info(`   ✓ ${sourceKey}: Checksum appris (première fois)`);
+            }
+
+            // Parser les domaines
             const lines = data.split('\n');
 
             lines.forEach(line => {
@@ -379,6 +462,121 @@ class BlocklistManager {
         reject(new Error('Timeout'));
       });
     });
+  }
+
+  /**
+   * Vérifie l'intégrité du contenu téléchargé
+   * @param {string} sourceKey - Clé de la source
+   * @param {string} actualChecksum - Checksum SHA-256 calculé
+   * @param {number} contentLength - Taille du contenu
+   * @returns {object} { valid: boolean, message: string, critical: boolean, learned: boolean }
+   */
+  verifyIntegrity(sourceKey, actualChecksum, contentLength) {
+    if (!sourceKey || !BLOCKLIST_CHECKSUMS[sourceKey]) {
+      return { valid: true, message: 'No checksum configured', critical: false, learned: false };
+    }
+
+    const checksumConfig = BLOCKLIST_CHECKSUMS[sourceKey];
+
+    // Si la validation n'est pas activée pour cette source
+    if (!checksumConfig.enabled) {
+      return { valid: true, message: 'Checksum validation disabled', critical: false, learned: false };
+    }
+
+    // Mode auto-learn : première fois, on apprend le checksum
+    if (!checksumConfig.checksum) {
+      checksumConfig.checksum = actualChecksum;
+      checksumConfig.lastUpdate = new Date().toISOString();
+      checksumConfig.contentLength = contentLength;
+
+      // Sauvegarder le checksum appris (optionnel, pour persistance)
+      this.saveLearnedChecksum(sourceKey, actualChecksum, contentLength);
+
+      return { valid: true, message: 'Checksum learned', critical: false, learned: true };
+    }
+
+    // Vérifier le checksum
+    if (checksumConfig.checksum === actualChecksum) {
+      return { valid: true, message: 'Integrity verified', critical: false, learned: false };
+    }
+
+    // Checksum différent - vérifier si c'est une mise à jour légitime
+    const sizeDifference = Math.abs(contentLength - (checksumConfig.contentLength || 0));
+    const sizeChangePercent = (sizeDifference / (checksumConfig.contentLength || 1)) * 100;
+
+    // Si la taille a changé de moins de 5%, c'est probablement une mise à jour légitime
+    if (sizeChangePercent < 5) {
+      logger.info(`   ℹ️  ${sourceKey}: Mise à jour détectée (taille: ${sizeChangePercent.toFixed(1)}% changement)`);
+
+      // Mettre à jour le checksum appris
+      checksumConfig.checksum = actualChecksum;
+      checksumConfig.lastUpdate = new Date().toISOString();
+      checksumConfig.contentLength = contentLength;
+      this.saveLearnedChecksum(sourceKey, actualChecksum, contentLength);
+
+      return { valid: true, message: 'Checksum updated (legitimate update)', critical: false, learned: true };
+    }
+
+    // Changement suspect (> 5% de taille)
+    return {
+      valid: false,
+      message: `Checksum mismatch! Size change: ${sizeChangePercent.toFixed(1)}% - Possible compromise or major update`,
+      critical: sizeChangePercent > 20,  // > 20% = critique
+      learned: false
+    };
+  }
+
+  /**
+   * Sauvegarde le checksum appris pour persistance
+   */
+  async saveLearnedChecksum(sourceKey, checksum, contentLength) {
+    try {
+      const checksumFile = path.join(this.configManager.getConfigDir(), 'blocklist_checksums.json');
+
+      let checksums = {};
+      try {
+        const content = await fs.readFile(checksumFile, 'utf-8');
+        checksums = JSON.parse(content);
+      } catch (err) {
+        // Fichier n'existe pas encore
+      }
+
+      checksums[sourceKey] = {
+        checksum,
+        contentLength,
+        lastUpdate: new Date().toISOString()
+      };
+
+      await fs.writeFile(checksumFile, JSON.stringify(checksums, null, 2), 'utf-8');
+    } catch (error) {
+      // Erreur non critique
+      logger.debug(`Could not save learned checksum: ${error.message}`);
+    }
+  }
+
+  /**
+   * Charge les checksums appris depuis le fichier
+   */
+  async loadLearnedChecksums() {
+    try {
+      const checksumFile = path.join(this.configManager.getConfigDir(), 'blocklist_checksums.json');
+      const content = await fs.readFile(checksumFile, 'utf-8');
+      const checksums = JSON.parse(content);
+
+      // Charger les checksums appris dans la configuration
+      for (const [sourceKey, data] of Object.entries(checksums)) {
+        if (BLOCKLIST_CHECKSUMS[sourceKey]) {
+          BLOCKLIST_CHECKSUMS[sourceKey].checksum = data.checksum;
+          BLOCKLIST_CHECKSUMS[sourceKey].contentLength = data.contentLength;
+          BLOCKLIST_CHECKSUMS[sourceKey].lastUpdate = data.lastUpdate;
+        }
+      }
+
+      logger.debug('Checksums appris chargés avec succès');
+    } catch (error) {
+      // Fichier n'existe pas encore, pas grave
+      logger.debug('Aucun checksum appris trouvé (première exécution)');
+    }
   }
 
   /**

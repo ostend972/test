@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getDashboardStats } from '../../services/api.js';
 import { useWebSocket } from '../../hooks/useWebSocket.js';
@@ -36,8 +36,8 @@ const MetricCard = ({ title, icon, stats, color = "primary" }) => {
                 <h4 className="font-semibold text-sm">{title}</h4>
             </div>
             <div className="space-y-1.5">
-                {stats.map((stat, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-xs">
+                {stats.map((stat) => (
+                    <div key={stat.label} className="flex justify-between items-center text-xs">
                         <span className="text-text-subtle">{stat.label}</span>
                         <span className="font-semibold text-text-main">{stat.value}</span>
                     </div>
@@ -57,20 +57,28 @@ export const AdvancedSecurityMetrics = () => {
     });
 
     // WebSocket temps réel pour mises à jour instantanées
-    useWebSocket('stats_update', (updatedStats) => {
-        queryClient.setQueryData(['dashboardStats'], (prevStats) => {
-            if (!prevStats) return prevStats;
-            return {
-                ...prevStats,
-                ...updatedStats,
-                // Fusionner les stats avancées si disponibles
-                advanced: {
-                    ...prevStats.advanced,
-                    ...updatedStats.advanced
-                }
-            };
+    useEffect(() => {
+        const unsubscribe = useWebSocket('stats_update', (updatedStats) => {
+            queryClient.setQueryData(['dashboardStats'], (prevStats) => {
+                if (!prevStats) return prevStats;
+                return {
+                    ...prevStats,
+                    ...updatedStats,
+                    // Fusionner les stats avancées si disponibles
+                    advanced: {
+                        ...prevStats.advanced,
+                        ...updatedStats.advanced
+                    }
+                };
+            });
         });
-    });
+
+        return () => {
+            if (typeof unsubscribe === 'function') {
+                unsubscribe();
+            }
+        };
+    }, [queryClient]);
 
     if (isLoading) {
         return (
@@ -89,7 +97,18 @@ export const AdvancedSecurityMetrics = () => {
         return null;
     }
 
-    const { urlhaus, geoBlocker, behaviorAnalyzer, threats } = data.advanced;
+    // Null safety - provide defaults for all fields
+    const urlhaus = data?.advanced?.urlhaus || { requests: 0, cacheHitRate: '0%' };
+    const geoBlocker = data?.advanced?.geoBlocker || { requests: 0, cacheHitRate: '0%' };
+    const behaviorAnalyzer = data?.advanced?.behaviorAnalyzer || { trackedIPs: 0, totalRequests: 0 };
+    const threats = data?.advanced?.threats || {
+        invalidDomains: 0,
+        dnsTunneling: 0,
+        rateLimitHits: 0,
+        urlhausBlocks: 0,
+        geoBlocks: 0,
+        suspiciousBehavior: 0
+    };
 
     const urlhausStats = [
         { label: 'Requêtes API', value: urlhaus.requests || 0 },

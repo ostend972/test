@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { RealtimeEvent } from '../types';
 
 declare global {
@@ -11,6 +11,12 @@ declare global {
 
 export const useWebSocket = <T extends RealtimeEvent>(event: string, onMessage: (data: T) => void) => {
   const [isConnected, setIsConnected] = useState(false);
+  const onMessageRef = useRef(onMessage);
+
+  // Toujours garder la référence à jour
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   useEffect(() => {
     // Utiliser l'API Electron si disponible
@@ -20,7 +26,8 @@ export const useWebSocket = <T extends RealtimeEvent>(event: string, onMessage: 
 
       const cleanup = window.electronAPI.onDomainEvent((data: T) => {
         console.log('Received domain event:', data);
-        onMessage(data);
+        // Utiliser la référence pour toujours avoir le callback le plus récent
+        onMessageRef.current(data);
       });
 
       return () => {
@@ -30,7 +37,6 @@ export const useWebSocket = <T extends RealtimeEvent>(event: string, onMessage: 
       console.warn('Electron API not available, events will not be received');
       setIsConnected(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event]);
 
   return { isConnected };

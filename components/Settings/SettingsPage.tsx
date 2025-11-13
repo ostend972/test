@@ -5,6 +5,7 @@ import { Config, SystemIntegrityStatus } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { ToggleSwitch } from '../ui/ToggleSwitch';
+import { useToast } from '../ui/Toast';
 
 const SystemStatusIcon: React.FC<{ status: 'active' | 'inactive' | 'configured' | 'error' }> = ({ status }) => {
     const statusMap = {
@@ -33,6 +34,7 @@ const blocklistSourceNames: Record<string, string> = {
 
 export const SettingsPage: React.FC = () => {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [formState, setFormState] = useState<Partial<Config>>({});
 
   const { data: config, isLoading, isError, error } = useQuery<Config, Error>({
@@ -55,10 +57,10 @@ export const SettingsPage: React.FC = () => {
     mutationFn: updateConfig,
     onSuccess: (updatedConfig) => {
       queryClient.setQueryData(['config'], updatedConfig);
-      alert('Configuration mise à jour avec succès !');
+      toast.showSuccess('Configuration mise à jour avec succès !');
     },
     onError: (updateError: Error) => {
-      alert(`Erreur de mise à jour: ${updateError.message}`);
+      toast.showError(`Erreur de mise à jour: ${updateError.message}`);
     },
   });
 
@@ -68,59 +70,44 @@ export const SettingsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['systemIntegrity'] });
 
       // Construire le message détaillé
-      let message = '═══════ Résultat de la Réparation ═══════\n\n';
+      const details: string[] = [];
+
+      if (result.details?.proxy) {
+        if (result.details.proxy.repaired) {
+          details.push('✓ Proxy Système : Réparé');
+        } else if (result.details.proxy.error) {
+          details.push(`✗ Proxy : ${result.details.proxy.error}`);
+        }
+      }
+
+      if (result.details?.firewall) {
+        if (result.details.firewall.repaired) {
+          details.push('✓ Règle Pare-feu : Réparée');
+        } else if (result.details.firewall.error) {
+          details.push(`✗ Pare-feu : ${result.details.firewall.error}`);
+        }
+      }
+
+      if (result.details?.startupTask) {
+        if (result.details.startupTask.repaired) {
+          details.push('✓ Tâche Planifiée : Réparée');
+        } else if (result.details.startupTask.error) {
+          details.push(`✗ Tâche : ${result.details.startupTask.error}`);
+        }
+      }
+
+      const message = result.success
+        ? `Réparation réussie ! ${result.repairedCount} composant(s) réparé(s). ${details.join(' • ')}`
+        : `Réparation partielle : ${result.repairedCount} réparé(s), ${result.errorCount} erreur(s). ${details.join(' • ')}`;
 
       if (result.success) {
-        message += `✓ Réparation réussie !\n`;
-        message += `${result.repairedCount} composant(s) réparé(s)\n\n`;
+        toast.showSuccess(message, 7000);
       } else {
-        message += `⚠ Réparation partielle\n`;
-        message += `${result.repairedCount} composant(s) réparé(s)\n`;
-        message += `${result.errorCount} erreur(s) rencontrée(s)\n\n`;
+        toast.showWarning(message, 8000);
       }
-
-      // Détails par composant
-      if (result.details) {
-        message += 'Détails :\n';
-        if (result.details.proxy) {
-          if (result.details.proxy.repaired) {
-            message += '  ✓ Proxy Système : Réparé\n';
-          } else if (result.details.proxy.error) {
-            message += `  ✗ Proxy Système : ${result.details.proxy.error}\n`;
-          } else {
-            message += '  ⊘ Proxy Système : Déjà configuré\n';
-          }
-        }
-
-        if (result.details.firewall) {
-          if (result.details.firewall.repaired) {
-            message += '  ✓ Règle Pare-feu : Réparée\n';
-          } else if (result.details.firewall.error) {
-            message += `  ✗ Règle Pare-feu : ${result.details.firewall.error}\n`;
-          } else {
-            message += '  ⊘ Règle Pare-feu : Déjà active\n';
-          }
-        }
-
-        if (result.details.startupTask) {
-          if (result.details.startupTask.repaired) {
-            message += '  ✓ Tâche Planifiée : Réparée\n';
-          } else if (result.details.startupTask.error) {
-            message += `  ✗ Tâche Planifiée : ${result.details.startupTask.error}\n`;
-          } else {
-            message += '  ⊘ Tâche Planifiée : Déjà active\n';
-          }
-        }
-      }
-
-      if (result.errorCount > 0) {
-        message += '\n💡 Conseil : Exécutez CalmWeb en tant qu\'administrateur pour résoudre les erreurs.';
-      }
-
-      alert(message);
     },
     onError: (repairError: Error) => {
-      alert(`Erreur critique lors de la réparation:\n${repairError.message}`);
+      toast.showError(`Erreur critique lors de la réparation: ${repairError.message}`);
     },
   });
 
@@ -142,9 +129,52 @@ export const SettingsPage: React.FC = () => {
     const { name, value } = e.target;
     setFormState(prev => ({ ...prev, [name]: name === 'proxyPort' || name === 'updateInterval' ? Number(value) : value }));
   };
-  
+
+  const validatePort = (port: number | undefined): string | null => {
+    if (!port) {
+      return 'Le port du proxy est requis';
+    }
+
+    // Vérifier que c'est un nombre valide
+    if (isNaN(port) || !Number.isInteger(port)) {
+      return 'Le port doit être un nombre entier';
+    }
+
+    // Ports réservés (0-1023) interdits
+    if (port < 1024) {
+      return 'Le port doit être supérieur à 1023 (ports réservés)';
+    }
+
+    // Port maximum
+    if (port > 65535) {
+      return 'Le port doit être inférieur à 65536';
+    }
+
+    // Ports communs à éviter (pour éviter les conflits)
+    const commonPorts = [3000, 3306, 5432, 5000, 8000, 8888, 9000];
+    if (commonPorts.includes(port)) {
+      return `Le port ${port} est couramment utilisé. Recommandé : 8080 ou 8081`;
+    }
+
+    return null; // Validation OK
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Valider le port avant soumission
+    const portError = validatePort(formState.proxyPort);
+    if (portError) {
+      toast.showError(portError);
+      return;
+    }
+
+    // Valider l'intervalle de mise à jour
+    if (formState.updateInterval && (formState.updateInterval < 1 || formState.updateInterval > 168)) {
+      toast.showError('L\'intervalle de mise à jour doit être entre 1 et 168 heures');
+      return;
+    }
+
     mutation.mutate(formState);
   };
 

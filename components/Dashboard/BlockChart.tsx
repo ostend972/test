@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getChartData } from '../../services/api';
@@ -7,7 +7,13 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { RealtimeEvent, ChartDataPoint } from '../../types';
 
 // Custom Tooltip Component for a modern look
-const CustomTooltip = ({ active, payload, label }: any) => {
+interface TooltipProps {
+    active?: boolean;
+    payload?: Array<{ value?: number }>;
+    label?: string;
+}
+
+const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
     if (active && payload && payload.length > 0 && payload[0]) {
         return (
             <div className="p-3 bg-gray-800 text-white rounded-lg shadow-lg border border-gray-700">
@@ -49,34 +55,42 @@ export const BlockChart: React.FC = () => {
     });
 
     // Throttler les updates WebSocket (max 1 update par seconde)
-    useWebSocket<RealtimeEvent>('stats_update', (event) => {
-        if (event.type === 'blocked') {
-            const now = Date.now();
+    useEffect(() => {
+        const unsubscribe = useWebSocket<RealtimeEvent>('stats_update', (event) => {
+            if (event.type === 'blocked') {
+                const now = Date.now();
 
-            // Ne mettre à jour que si la dernière update date de plus d'1 seconde
-            if (now - lastUpdateRef.current < 1000) {
-                return;
-            }
-
-            lastUpdateRef.current = now;
-
-            queryClient.setQueryData<ChartDataPoint[] | undefined>(['blockChartData'], (prevData) => {
-                if (!prevData) return prevData;
-
-                const currentHour = new Date(event.timestamp).getHours();
-                const timeKey = `${String(currentHour).padStart(2, '0')}:00`;
-
-                const newData = [...prevData];
-                const pointIndex = newData.findIndex(p => p.time === timeKey);
-
-                if (pointIndex !== -1) {
-                    newData[pointIndex] = { ...newData[pointIndex], blocks: newData[pointIndex].blocks + 1 };
+                // Ne mettre à jour que si la dernière update date de plus d'1 seconde
+                if (now - lastUpdateRef.current < 1000) {
+                    return;
                 }
 
-                return newData;
-            });
-        }
-    });
+                lastUpdateRef.current = now;
+
+                queryClient.setQueryData<ChartDataPoint[] | undefined>(['blockChartData'], (prevData) => {
+                    if (!prevData) return prevData;
+
+                    const currentHour = new Date(event.timestamp).getHours();
+                    const timeKey = `${String(currentHour).padStart(2, '0')}:00`;
+
+                    const newData = [...prevData];
+                    const pointIndex = newData.findIndex(p => p.time === timeKey);
+
+                    if (pointIndex !== -1) {
+                        newData[pointIndex] = { ...newData[pointIndex], blocks: newData[pointIndex].blocks + 1 };
+                    }
+
+                    return newData;
+                });
+            }
+        });
+
+        return () => {
+            if (typeof unsubscribe === 'function') {
+                unsubscribe();
+            }
+        };
+    }, [queryClient]);
 
     return (
         <Card className="min-h-[420px] flex flex-col">

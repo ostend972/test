@@ -4,6 +4,19 @@ const url = require('url');
 const { extractHostnameFromPath, extractPortFromPath, looksLikeIP, isStandardPort } = require('./utils');
 const logger = require('./logger');
 
+// Configuration des limites de connexions
+const MAX_CONNECTIONS = 1000;  // Limite raisonnable pour éviter le DoS
+const SOCKET_TIMEOUT = 5 * 60 * 1000;  // 5 minutes
+
+// Patterns de menaces précompilés pour performance
+const THREAT_PATTERNS = {
+  'Remote Desktop': /teamviewer|anydesk|logmein|remotedesktop/i,
+  'Scam': /scam|free-money|prize|winner/i,
+  'Phishing': /phishing|secure-bank|paypal-verify|account-verify/i,
+  'Adware': /\bad\b|\bads\b|doubleclick|analytics/i,
+  'Malware': /malware|virus|trojan|download/i
+};
+
 /**
  * Serveur proxy HTTP/HTTPS avec filtrage
  */
@@ -36,6 +49,15 @@ class ProxyServer {
 
     // Handler pour HTTPS CONNECT tunneling
     this.server.on('connect', (req, clientSocket, head) => {
+      // Vérifier la limite de connexions
+      if (this.activeConnections.size >= MAX_CONNECTIONS) {
+        logger.warn(`Connection limit reached (${MAX_CONNECTIONS}), rejecting new connection`);
+        clientSocket.write('HTTP/1.1 503 Service Unavailable\r\n');
+        clientSocket.write('Retry-After: 60\r\n\r\n');
+        clientSocket.end();
+        return;
+      }
+
       this.handleHTTPSConnect(req, clientSocket, head);
     });
 
@@ -179,8 +201,40 @@ class ProxyServer {
    * Gère le tunneling HTTPS (méthode CONNECT)
    */
   async handleHTTPSConnect(req, clientSocket, head) {
-    const [hostname, port] = req.url.split(':');
-    const targetPort = parseInt(port) || 443;
+    // Validation robuste de l'URL CONNECT
+    if (!req.url || typeof req.url !== 'string') {
+      clientSocket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+      clientSocket.end();
+      logger.warn('CONNECT request with invalid URL');
+      return;
+    }
+
+    const parts = req.url.split(':');
+    if (parts.length !== 2) {
+      clientSocket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+      clientSocket.end();
+      logger.warn(`CONNECT request malformed: ${req.url}`);
+      return;
+    }
+
+    const [hostname, portStr] = parts;
+
+    // Valider hostname non vide
+    if (!hostname || hostname.trim() === '') {
+      clientSocket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+      clientSocket.end();
+      logger.warn('CONNECT request with empty hostname');
+      return;
+    }
+
+    // Valider port
+    const targetPort = parseInt(portStr, 10);
+    if (isNaN(targetPort) || targetPort < 1 || targetPort > 65535) {
+      clientSocket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+      clientSocket.end();
+      logger.warn(`CONNECT request with invalid port: ${portStr}`);
+      return;
+    }
 
     // Ajouter aux connexions actives
     this.activeConnections.add(clientSocket);
@@ -251,6 +305,22 @@ class ProxyServer {
     // Optimiser les sockets pour la performance
     this.optimizeSocket(clientSocket);
     this.optimizeSocket(serverSocket);
+
+    // Ajouter timeout pour éviter les connexions zombies (protection Slowloris)
+    clientSocket.setTimeout(SOCKET_TIMEOUT);
+    serverSocket.setTimeout(SOCKET_TIMEOUT);
+
+    clientSocket.on('timeout', () => {
+      logger.debug('Client socket timeout, closing connection');
+      if (!clientSocket.destroyed) clientSocket.destroy();
+      if (!serverSocket.destroyed) serverSocket.destroy();
+    });
+
+    serverSocket.on('timeout', () => {
+      logger.debug('Server socket timeout, closing connection');
+      if (!serverSocket.destroyed) serverSocket.destroy();
+      if (!clientSocket.destroyed) clientSocket.destroy();
+    });
 
     // Éviter les erreurs de pipe non gérées
     const clientPipe = clientSocket.pipe(serverSocket);
@@ -358,34 +428,14 @@ class ProxyServer {
 
   /**
    * Détermine le type de menace basé sur le nom de domaine
+   * Utilise des regex précompilés pour de meilleures performances
    */
   determineThreatType(domain) {
-    const lowerDomain = domain.toLowerCase();
-
-    // Patterns de détection
-    if (lowerDomain.includes('teamviewer') || lowerDomain.includes('anydesk') ||
-        lowerDomain.includes('logmein') || lowerDomain.includes('remotedesktop')) {
-      return 'Remote Desktop';
-    }
-
-    if (lowerDomain.includes('scam') || lowerDomain.includes('free-money') ||
-        lowerDomain.includes('prize') || lowerDomain.includes('winner')) {
-      return 'Scam';
-    }
-
-    if (lowerDomain.includes('phishing') || lowerDomain.includes('secure-bank') ||
-        lowerDomain.includes('paypal-verify') || lowerDomain.includes('account-verify')) {
-      return 'Phishing';
-    }
-
-    if (lowerDomain.includes('ad') || lowerDomain.includes('ads') ||
-        lowerDomain.includes('doubleclick') || lowerDomain.includes('analytics')) {
-      return 'Adware';
-    }
-
-    if (lowerDomain.includes('malware') || lowerDomain.includes('virus') ||
-        lowerDomain.includes('trojan') || lowerDomain.includes('download')) {
-      return 'Malware';
+    // Tester chaque pattern de menace
+    for (const [threat, pattern] of Object.entries(THREAT_PATTERNS)) {
+      if (pattern.test(domain)) {
+        return threat;
+      }
     }
 
     // Par défaut

@@ -28,12 +28,26 @@ const timeSince = (date: string | null): string => {
 
 export const DomainTable: React.FC<DomainTableProps> = ({ domains, onDelete, isLoading, isDeleting }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
 
   const filteredDomains = useMemo(() =>
     domains.filter(d =>
       d.domain.toLowerCase().includes(searchTerm.toLowerCase()) ||
       d.ipAddress.toLowerCase().includes(searchTerm.toLowerCase())
     ), [domains, searchTerm]);
+
+  // Calcul de la pagination
+  const totalItems = filteredDomains.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedDomains = filteredDomains.slice(startIndex, endIndex);
+
+  // Réinitialiser à la page 1 quand la recherche change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
 
   if (isLoading) {
     return <div className="text-center p-8">Chargement de la liste...</div>;
@@ -76,7 +90,7 @@ export const DomainTable: React.FC<DomainTableProps> = ({ domains, onDelete, isL
               </tr>
             </thead>
             <tbody className="divide-y divide-border-color">
-              {filteredDomains.map((d) => (
+              {paginatedDomains.map((d) => (
                 <tr key={d.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-main">{d.domain}</td>
                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-subtle font-mono">{d.ipAddress}</td>
@@ -99,6 +113,36 @@ export const DomainTable: React.FC<DomainTableProps> = ({ domains, onDelete, isL
               ))}
             </tbody>
           </table>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-between border-t border-border-color pt-4" role="navigation" aria-label="Pagination des domaines">
+              <div className="text-sm text-text-subtle">
+                Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} domaines
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 text-sm font-medium text-text-main bg-white border border-border-color rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+                  aria-label="Page précédente"
+                >
+                  Précédent
+                </button>
+                <span className="px-4 py-2 text-sm font-medium text-text-main" aria-current="page">
+                  Page {currentPage} sur {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 text-sm font-medium text-text-main bg-white border border-border-color rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+                  aria-label="Page suivante"
+                >
+                  Suivant
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

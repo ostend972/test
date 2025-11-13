@@ -65,6 +65,7 @@ let eventInterval = null;
 let configManager = null;
 let securityEventHandler = null;
 let statsUpdatedHandler = null;
+let logHandler = null;
 let updateManager = null;
 
 /**
@@ -1006,7 +1007,18 @@ app.whenReady().then(() => {
     try {
       log('Arrêt du système - désactivation du proxy...');
       event.preventDefault(); // Empêcher l'arrêt immédiat
-      await backend.stop();
+
+      // Timeout de 3 secondes max pour éviter de bloquer l'arrêt système
+      const shutdownPromise = backend.stop();
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          log('⚠️ Timeout lors de l\'arrêt, forçage');
+          resolve();
+        }, 3000);
+      });
+
+      await Promise.race([shutdownPromise, timeoutPromise]);
+
       log('✓ Proxy désactivé pour l\'arrêt');
       app.quit();
     } catch (error) {

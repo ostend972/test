@@ -1,4 +1,4 @@
-const http = require('http');
+const https = require('https');
 const logger = require('./logger');
 
 /**
@@ -10,6 +10,7 @@ class GeoBlocker {
     this.blockedCountries = new Set(blockedCountries.map(c => c.toUpperCase()));
     this.cache = new Map(); // Cache IP -> pays
     this.cacheTimeout = 86400000; // 24 heures
+    this.MAX_CACHE_SIZE = 10000; // Limite de 10 000 entrées
     this.stats = {
       requests: 0,
       cacheHits: 0,
@@ -57,12 +58,40 @@ class GeoBlocker {
   }
 
   /**
+   * Vérifie si une IP est privée/locale
+   * @param {string} ip
+   * @returns {boolean}
+   */
+  isPrivateIP(ip) {
+    if (!ip || ip === 'unknown') return true;
+
+    // RFC 1918 + loopback + link-local + IPv6 private
+    const privateRanges = [
+      /^127\./,                          // Loopback
+      /^10\./,                           // RFC 1918 - 10.0.0.0/8
+      /^192\.168\./,                     // RFC 1918 - 192.168.0.0/16
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./,  // RFC 1918 - 172.16.0.0/12
+      /^169\.254\./,                     // Link-local - 169.254.0.0/16
+      /^::1$/,                           // IPv6 loopback
+      /^fc00:/i,                         // IPv6 Unique Local - fc00::/7
+      /^fd00:/i,                         // IPv6 Unique Local - fd00::/8
+      /^fe80:/i,                         // IPv6 Link-local - fe80::/10
+      /^::ffff:127\./i,                  // IPv4-mapped IPv6 loopback
+      /^::ffff:10\./i,                   // IPv4-mapped IPv6 private
+      /^::ffff:192\.168\./i,             // IPv4-mapped IPv6 private
+      /^::ffff:172\.(1[6-9]|2[0-9]|3[0-1])\./i  // IPv4-mapped IPv6 private
+    ];
+
+    return privateRanges.some(regex => regex.test(ip));
+  }
+
+  /**
    * Vérifie si une IP doit être bloquée
    * @param {string} ip
    * @returns {Promise<object>} { blocked: boolean, country: string, reason: string }
    */
   async checkIP(ip) {
-    if (!ip || ip === 'unknown' || ip.startsWith('127.') || ip.startsWith('192.168.') || ip.startsWith('10.')) {
+    if (this.isPrivateIP(ip)) {
       // IPs locales/privées ne sont jamais bloquées
       return { blocked: false };
     }
@@ -89,7 +118,12 @@ class GeoBlocker {
           : null
       };
 
-      // Mettre en cache
+      // Mettre en cache avec limite LRU
+      if (this.cache.size >= this.MAX_CACHE_SIZE) {
+        const firstKey = this.cache.keys().next().value;
+        this.cache.delete(firstKey);
+      }
+
       this.cache.set(ip, {
         result,
         timestamp: Date.now()
@@ -118,9 +152,9 @@ class GeoBlocker {
    */
   async lookupIP(ip) {
     return new Promise((resolve, reject) => {
-      const url = `http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,city`;
+      const url = `https://ip-api.com/json/${ip}?fields=status,message,country,countryCode,city`;
 
-      const req = http.get(url, { timeout: 5000 }, (res) => {
+      const req = https.get(url, { timeout: 5000 }, (res) => {
         let data = '';
 
         res.on('data', chunk => {

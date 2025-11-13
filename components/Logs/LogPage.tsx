@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getLogs, exportLogs, generateDiagnosticReport, getSecurityEvents, addWhitelistDomain, addBlocklistDomain, deleteWhitelistDomain, deleteBlocklistDomain, getWhitelist, getBlocklist } from '../../services/api';
 import { Log, LogLevel, SecurityEvent, BlockReason } from '../../types';
@@ -42,7 +42,7 @@ const TechnicalLogs: React.FC = () => {
     const paginatedLogs = logs?.slice(startIndex, endIndex) || [];
 
     // Réinitialiser à la page 1 quand les filtres changent
-    React.useEffect(() => {
+    useEffect(() => {
         setCurrentPage(1);
     }, [filters]);
 
@@ -211,7 +211,7 @@ const SecurityHistory: React.FC = () => {
     const paginatedEvents = filteredEvents.slice(startIndex, endIndex);
 
     // Réinitialiser à la page 1 quand les filtres ou la recherche changent
-    React.useEffect(() => {
+    useEffect(() => {
         setCurrentPage(1);
     }, [searchTerm, filters]);
 

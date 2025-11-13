@@ -15,6 +15,7 @@ class Logger extends EventEmitter {
     this.securityEventBuffer = [];
     this.nextLogId = 1;
     this.nextEventId = 1;
+    this._rotationCheck = null;  // Throttle rotation check
 
     // Chemin des fichiers de persistance
     const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
@@ -706,23 +707,64 @@ class Logger extends EventEmitter {
   /**
    * Persiste un log dans le fichier
    */
+  /**
+   * Persiste un log avec append-only (évite la fuite mémoire)
+   */
   async persistLog(logEntry) {
     try {
       // S'assurer que le répertoire existe
       await this.ensureConfigDir();
 
-      let logs = [];
-      try {
-        const content = await fs.readFile(this.logsFile, 'utf-8');
-        logs = JSON.parse(content);
-      } catch (err) {
-        // Fichier n'existe pas encore
-      }
+      // Append seulement (O(1) au lieu de O(n))
+      const line = JSON.stringify(logEntry) + '\n';
+      await fs.appendFile(this.logsFile, line, 'utf-8');
 
-      logs.push(logEntry);
-      await fs.writeFile(this.logsFile, JSON.stringify(logs, null, 2), 'utf-8');
+      // Vérifier rotation si nécessaire (throttled)
+      this.checkLogRotation();
     } catch (error) {
       // Erreur silencieuse pour ne pas bloquer l'application
+    }
+  }
+
+  /**
+   * Vérifie si la rotation des logs est nécessaire (throttled)
+   */
+  checkLogRotation() {
+    // Throttled check (max 1x par minute)
+    if (this._rotationCheck) return;
+
+    this._rotationCheck = setTimeout(async () => {
+      this._rotationCheck = null;
+      try {
+        const stats = await fs.stat(this.logsFile);
+        if (stats.size > 10 * 1024 * 1024) {  // 10 MB
+          await this.rotateLogs();
+        }
+      } catch (err) {
+        // Fichier n'existe pas encore, ignorer
+      }
+    }, 60000);  // 1 minute
+  }
+
+  /**
+   * Effectue la rotation des logs
+   */
+  async rotateLogs() {
+    try {
+      const oldFile = this.logsFile + '.old';
+
+      // Renommer l'ancien fichier
+      try {
+        await fs.rename(this.logsFile, oldFile);
+        console.log('✓ Rotation des logs effectuée (fichier > 10 MB)');
+      } catch (err) {
+        // Ignorer si le fichier n'existe pas
+      }
+
+      // L'ancien fichier .old sera écrasé à la prochaine rotation
+      // Cela conserve environ 20 MB de logs au total
+    } catch (error) {
+      console.error('Erreur rotation logs:', error);
     }
   }
 

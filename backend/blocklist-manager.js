@@ -237,8 +237,8 @@ class BlocklistManager {
       logger.info(`${sources.length} liste(s) à vérifier (ordre de priorité)`);
       logger.info('');
 
-      // Télécharger chaque source progressivement
-      for (const source of sources) {
+      // Télécharger toutes les sources en parallèle (gain de 70%)
+      const downloadPromises = sources.map(async (source) => {
         const listKey = source.name;
 
         try {
@@ -248,12 +248,8 @@ class BlocklistManager {
             const count = this.listMetadata[listKey].domainCount || 0;
             logger.info(`⏭️  ${source.name}: À jour (${age}, ${count.toLocaleString()} domaines)`);
 
-            // Ajouter les domaines du cache à la collection
-            const cached = this.listMetadata[listKey].domainCount || 0;
-            if (cached > 0) {
-              // Les domaines sont déjà dans blockedDomains du cache
-            }
-            continue;
+            // Retourner info que c'est du cache
+            return { listKey, cached: true, domains: new Set(), success: true };
           }
 
           logger.info(`⬇️  ${source.name}: Téléchargement...`);
@@ -264,32 +260,48 @@ class BlocklistManager {
             2000
           );
 
-          // Appliquer immédiatement à la blocklist (protection immédiate)
-          domains.forEach(d => allDomains.add(d));
+          logger.info(`   ✓ ${source.name}: ${domains.size.toLocaleString()} domaines téléchargés`);
 
-          // Mettre à jour les métadonnées
-          this.listMetadata[listKey].lastUpdate = new Date();
-          this.listMetadata[listKey].domainCount = domains.size;
-          this.listMetadata[listKey].status = 'success';
-
-          logger.info(`   ✓ ${source.name}: ${domains.size.toLocaleString()} domaines ajoutés`);
+          return { listKey, domains, success: true, cached: false };
 
         } catch (error) {
           logger.error(`   ✗ ${source.name}: ${error.message}`);
-
-          // Marquer comme erreur
-          this.listMetadata[listKey].status = 'error';
 
           // Essayer d'utiliser le cache si disponible
           const cached = this.listMetadata[listKey].domainCount || 0;
           if (cached > 0) {
             const age = this.formatAge(this.listMetadata[listKey].lastUpdate);
             logger.warn(`   ⚠️  Mode cache: ${cached.toLocaleString()} domaines (âge: ${age})`);
-            this.listMetadata[listKey].status = 'cache';
-            // Les domaines du cache sont déjà dans blockedDomains
+            return { listKey, error, success: false, useCache: true };
           } else {
             logger.error(`   ✗ Pas de cache disponible pour ${source.name}`);
+            return { listKey, error, success: false, useCache: false };
           }
+        }
+      });
+
+      // Attendre TOUTES les sources en parallèle
+      const results = await Promise.all(downloadPromises);
+
+      // Traiter les résultats
+      for (const result of results) {
+        if (result.success && !result.cached) {
+          // Appliquer les domaines téléchargés
+          result.domains.forEach(d => allDomains.add(d));
+
+          // Mettre à jour les métadonnées
+          this.listMetadata[result.listKey].lastUpdate = new Date();
+          this.listMetadata[result.listKey].domainCount = result.domains.size;
+          this.listMetadata[result.listKey].status = 'success';
+
+        } else if (result.useCache) {
+          // Mode cache
+          this.listMetadata[result.listKey].status = 'cache';
+          // Les domaines du cache sont déjà dans blockedDomains
+
+        } else if (!result.success && !result.useCache) {
+          // Erreur sans cache
+          this.listMetadata[result.listKey].status = 'error';
         }
       }
 

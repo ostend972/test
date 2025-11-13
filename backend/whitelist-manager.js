@@ -160,16 +160,11 @@ class WhitelistManager {
       throw new Error('Ce domaine est déjà dans la liste blanche.');
     }
 
-    // Résoudre l'IP si c'est un domaine
-    let ipAddress = null;
-    if (!looksLikeIP(cleaned) && !cleaned.includes('*') && !cleaned.includes('/')) {
-      ipAddress = await resolveHostname(cleaned);
-    }
-
+    // Créer l'entrée immédiatement avec placeholder pour IP (non bloquant)
     const entry = {
       id: this.nextId++,
       domain: cleaned,
-      ipAddress: ipAddress || 'N/A',
+      ipAddress: 'Resolving...',  // Placeholder pendant résolution
       createdAt: new Date().toISOString(),
       hits: 0,
       lastUsed: null,
@@ -185,7 +180,40 @@ class WhitelistManager {
     }
 
     logger.info(`Domaine ajouté à la whitelist: ${cleaned}`);
+
+    // Résoudre DNS en arrière-plan (non bloquant pour UX immédiate)
+    if (!looksLikeIP(cleaned) && !cleaned.includes('*') && !cleaned.includes('/')) {
+      this.resolveDNSAsync(cleaned);
+    } else {
+      // Pas besoin de résolution DNS
+      entry.ipAddress = 'N/A';
+      if (save) {
+        await this.save();
+      }
+    }
+
     return entry;
+  }
+
+  /**
+   * Résout DNS en arrière-plan de manière asynchrone
+   */
+  async resolveDNSAsync(domain) {
+    try {
+      const ip = await resolveHostname(domain);
+      const entry = this.whitelist.get(domain);
+      if (entry) {
+        entry.ipAddress = ip || 'N/A';
+        await this.save();  // Sauvegarder quand prêt
+        logger.debug(`DNS résolu pour ${domain}: ${entry.ipAddress}`);
+      }
+    } catch (error) {
+      // Ignorer erreurs DNS
+      const entry = this.whitelist.get(domain);
+      if (entry) {
+        entry.ipAddress = 'N/A';
+      }
+    }
   }
 
   /**

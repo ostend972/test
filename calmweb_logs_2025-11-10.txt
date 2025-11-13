@@ -1,2 +1,0 @@
-2025-11-10T23:00:01.583Z [INFO] Statistiques quotidiennes réinitialisées
-2025-11-10T23:00:00.000Z [INFO] Statistiques quotidiennes réinitialisées

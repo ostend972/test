@@ -15,6 +15,7 @@ const RateLimiter = require('./rate-limiter');
 const URLhausAPI = require('./urlhaus-api');
 const GeoBlocker = require('./geo-blocker');
 const BehaviorAnalyzer = require('./behavior-analyzer');
+const CacheCoordinator = require('./cache-coordinator');
 
 /**
  * Serveur proxy HTTP/HTTPS avec filtrage
@@ -59,6 +60,92 @@ class ProxyServer {
       geoBlocks: 0,
       suspiciousBehavior: 0
     };
+
+    // Coordinateur de cache global
+    this.cacheCoordinator = new CacheCoordinator();
+    this.initializeCacheCoordination();
+  }
+
+  /**
+   * Initialise la coordination des caches
+   */
+  initializeCacheCoordination() {
+    // Enregistrer le cache de la whitelist
+    if (this.whitelistManager && this.whitelistManager.whitelistCache) {
+      this.cacheCoordinator.registerCache(
+        'whitelist',
+        this.whitelistManager,
+        () => {
+          // Cleanup: supprimer les entrées LRU les moins utilisées si dépassement
+          if (this.whitelistManager.whitelistCache.size > this.whitelistManager.cacheMaxSize) {
+            const excess = this.whitelistManager.whitelistCache.size - this.whitelistManager.cacheMaxSize;
+            const entries = Array.from(this.whitelistManager.whitelistCache.keys());
+            for (let i = 0; i < excess; i++) {
+              this.whitelistManager.whitelistCache.delete(entries[i]);
+            }
+            return excess;
+          }
+          return 0;
+        }
+      );
+    }
+
+    // Enregistrer le cache de la blocklist
+    if (this.blocklistManager && this.blocklistManager.blocklistCache) {
+      this.cacheCoordinator.registerCache(
+        'blocklist',
+        this.blocklistManager,
+        () => {
+          if (this.blocklistManager.blocklistCache.size > this.blocklistManager.cacheMaxSize) {
+            const excess = this.blocklistManager.blocklistCache.size - this.blocklistManager.cacheMaxSize;
+            const entries = Array.from(this.blocklistManager.blocklistCache.keys());
+            for (let i = 0; i < excess; i++) {
+              this.blocklistManager.blocklistCache.delete(entries[i]);
+            }
+            return excess;
+          }
+          return 0;
+        }
+      );
+    }
+
+    // Enregistrer le cache URLhaus API
+    if (this.urlhausAPI && this.urlhausAPI.cache) {
+      this.cacheCoordinator.registerCache(
+        'urlhaus',
+        this.urlhausAPI,
+        () => {
+          const cleaned = this.urlhausAPI.cleanupCache();
+          return cleaned;
+        }
+      );
+    }
+
+    // Enregistrer le cache Géo-Blocker
+    if (this.geoBlocker && this.geoBlocker.cache) {
+      this.cacheCoordinator.registerCache(
+        'geoblocker',
+        this.geoBlocker,
+        () => {
+          const cleaned = this.geoBlocker.cleanupCache();
+          return cleaned;
+        }
+      );
+    }
+
+    // Enregistrer le Behavior Analyzer
+    if (this.behaviorAnalyzer && this.behaviorAnalyzer.ipTracking) {
+      this.cacheCoordinator.registerCache(
+        'behavior',
+        this.behaviorAnalyzer,
+        () => {
+          const cleaned = this.behaviorAnalyzer.cleanup();
+          return cleaned;
+        }
+      );
+    }
+
+    logger.info(`CacheCoordinator: ${this.cacheCoordinator.caches.length} caches enregistrés`);
   }
 
   /**
@@ -98,6 +185,11 @@ class ProxyServer {
       this.server.listen(port, host, () => {
         this.isRunning = true;
         logger.info(`Serveur proxy démarré sur ${host}:${port}`);
+
+        // Démarrer le nettoyage périodique des caches (toutes les heures)
+        this.cacheCoordinator.startPeriodicCleanup(3600000);
+        logger.info('CacheCoordinator: Nettoyage périodique démarré (1h)');
+
         resolve({ host, port });
       });
 
@@ -118,6 +210,12 @@ class ProxyServer {
       socket.destroy();
     }
     this.activeConnections.clear();
+
+    // Arrêter le nettoyage périodique des caches
+    if (this.cacheCoordinator) {
+      this.cacheCoordinator.stopPeriodicCleanup();
+      logger.info('CacheCoordinator: Nettoyage périodique arrêté');
+    }
 
     // Nettoyer le rate limiter
     if (this.rateLimiter) {
@@ -540,6 +638,13 @@ class ProxyServer {
         this.threatStats.urlhausBlocks++;
         logger.warn(`⚠️ URLhaus API: Domaine malveillant détecté (${result.threat}): ${hostname} depuis ${clientIP || 'unknown'}`);
 
+        // Log security event pour le dashboard
+        logger.logBlocked(
+          hostname,
+          `URLhaus API: ${result.threat} (Confiance: ${result.confidence})`,
+          'URLhaus API (abuse.ch)'
+        );
+
         // Ajouter automatiquement à la blocklist custom pour blocage futur immédiat
         try {
           await this.blocklistManager.addCustomDomain(hostname);
@@ -565,6 +670,13 @@ class ProxyServer {
       if (result.blocked) {
         this.threatStats.geoBlocks++;
         logger.warn(`⚠️ Géo-blocking: ${result.reason} pour ${hostname}`);
+
+        // Log security event pour le dashboard
+        logger.logBlocked(
+          hostname,
+          `Géo-Blocking: ${result.country} (${result.countryCode}) - IP: ${clientIP}`,
+          'Géo-Blocking (GeoIP)'
+        );
       }
     } catch (error) {
       // Ignorer les erreurs silencieusement (fail-open)
@@ -824,6 +936,10 @@ class ProxyServer {
       urlhausAPI: this.urlhausAPI.getStats(),
       geoBlocker: this.geoBlocker.getStats(),
       behaviorAnalyzer: this.behaviorAnalyzer.getStats(),
+      cacheCoordinator: this.cacheCoordinator ? {
+        stats: this.cacheCoordinator.getCacheStats(),
+        memory: this.cacheCoordinator.getMemoryEstimate()
+      } : null,
       threats: this.threatStats
     };
   }

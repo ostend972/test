@@ -22,7 +22,7 @@
     "appId": "com.calmweb.app",
     "productName": "CalmWeb",
     "directories": {
-      "output": "dist"
+      "output": "dist-electron"
     },
     "publish": {
       "provider": "github",
@@ -48,6 +48,9 @@
       "stores/**/*",
       "hooks/**/*",
       "node_modules/electron-updater/**/*"
+    ],
+    "asarUnpack": [
+      "dist/**/*"
     ],
     "win": {
       "target": [

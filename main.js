@@ -124,7 +124,26 @@ function createWindow(minimized = false) {
     log('Démarrage en mode minimisé (barre des tâches uniquement)');
   }
 
-  mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  // Charger le bon index.html selon le mode (dev vs production)
+  let indexPath;
+  if (app.isPackaged) {
+    // Production: dist est extrait dans app.asar.unpacked
+    const unpackedPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'dist', 'index.html');
+    const asarPath = path.join(__dirname, 'dist', 'index.html');
+
+    // Vérifier quel chemin existe
+    indexPath = fs.existsSync(unpackedPath) ? unpackedPath : asarPath;
+  } else {
+    // Dev: après build Vite
+    indexPath = path.join(__dirname, 'dist', 'index.html');
+  }
+
+  log(`Chargement de: ${indexPath}`);
+  log(`app.isPackaged: ${app.isPackaged}`);
+  log(`__dirname: ${__dirname}`);
+  log(`Fichier existe: ${fs.existsSync(indexPath)}`);
+
+  mainWindow.loadFile(indexPath);
 
   // Ouvrir DevTools pour debugging (commenté pour production)
   // mainWindow.webContents.openDevTools();

@@ -7,14 +7,17 @@ import { Button } from '../ui/Button';
 import { ToggleSwitch } from '../ui/ToggleSwitch';
 import { useToast } from '../ui/Toast';
 
-const SystemStatusIcon: React.FC<{ status: 'active' | 'inactive' | 'configured' | 'error' }> = ({ status }) => {
+const SystemStatusIcon: React.FC<{ status: 'active' | 'inactive' | 'configured' | 'not_configured' | 'other_proxy' | 'error' | 'unknown' }> = ({ status }) => {
     const statusMap = {
         active: { color: 'text-success', icon: 'M9 12l2 2 4-4m6-3a9 9 0 11-18 0 9 9 0 0118 0z', text: 'Actif' },
         configured: { color: 'text-success', icon: 'M9 12l2 2 4-4m6-3a9 9 0 11-18 0 9 9 0 0118 0z', text: 'Configuré' },
+        not_configured: { color: 'text-warning', icon: 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', text: 'Non configuré' },
+        other_proxy: { color: 'text-warning', icon: 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', text: 'Autre proxy' },
         inactive: { color: 'text-warning', icon: 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', text: 'Inactif' },
         error: { color: 'text-danger', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z', text: 'Erreur' },
+        unknown: { color: 'text-text-subtle', icon: 'M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z', text: 'Inconnu' },
     };
-    const current = statusMap[status];
+    const current = statusMap[status] || statusMap.unknown; // Fallback to unknown
     return (
          <div className={`flex items-center space-x-2 ${current.color}`}>
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">

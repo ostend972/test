@@ -21,13 +21,16 @@ const BotIcon = () => (
     </svg>
 );
 
-const MetricCard = ({ title, icon, stats, color = "primary" }) => {
+const MetricCard = ({ title, icon, stats = [], color = "primary" }) => {
     const colorClasses = {
         primary: "bg-primary/10 border-primary/30 text-primary",
         success: "bg-success/10 border-success/30 text-success",
         warning: "bg-warning/10 border-warning/30 text-warning",
         danger: "bg-danger/10 border-danger/30 text-danger"
     };
+
+    // Ensure stats is an array
+    const safeStats = Array.isArray(stats) ? stats : [];
 
     return (
         <div className={`${colorClasses[color]} border rounded-lg p-4`}>
@@ -36,7 +39,7 @@ const MetricCard = ({ title, icon, stats, color = "primary" }) => {
                 <h4 className="font-semibold text-sm">{title}</h4>
             </div>
             <div className="space-y-1.5">
-                {stats.map((stat) => (
+                {safeStats.map((stat) => (
                     <div key={stat.label} className="flex justify-between items-center text-xs">
                         <span className="text-text-subtle">{stat.label}</span>
                         <span className="font-semibold text-text-main">{stat.value}</span>

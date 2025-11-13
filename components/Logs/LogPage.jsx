@@ -28,11 +28,16 @@ export const LogPage = () => {
     enabled: activeLogType === 'technical',
   });
 
-  // WebSocket pour les nouveaux logs
-  useWebSocket('new_log', () => {
+  // WebSocket pour les nouveaux événements de sécurité (blocages/autorisations)
+  useWebSocket('domain_event', () => {
     if (activeLogType === 'security') {
       refetchSecurity();
-    } else {
+    }
+  });
+
+  // WebSocket pour les nouveaux logs techniques
+  useWebSocket('new_log', () => {
+    if (activeLogType === 'technical') {
       refetchTechnical();
     }
   });

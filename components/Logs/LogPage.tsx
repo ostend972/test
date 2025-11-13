@@ -26,11 +26,25 @@ const sources = ['Red Flag Domains', 'Hagezi Ultimate', 'Easylist FR', 'StevenBl
 
 const TechnicalLogs: React.FC = () => {
     const [filters, setFilters] = useState<{ level?: LogLevel }>({});
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 50;
 
     const { data: logs, isLoading, isError, error } = useQuery<Log[], Error>({
         queryKey: ['logs', filters],
         queryFn: () => getLogs(filters),
     });
+
+    // Calcul de la pagination
+    const totalItems = logs?.length || 0;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedLogs = logs?.slice(startIndex, endIndex) || [];
+
+    // Réinitialiser à la page 1 quand les filtres changent
+    React.useEffect(() => {
+        setCurrentPage(1);
+    }, [filters]);
 
     return (
         <div>
@@ -60,7 +74,7 @@ const TechnicalLogs: React.FC = () => {
                     <tbody className="divide-y divide-border-color">
                         {isLoading && <tr><td colSpan={3} className="text-center p-8 text-text-subtle">Chargement...</td></tr>}
                         {isError && <tr><td colSpan={3} className="text-center p-8 text-danger">Erreur: {error.message}</td></tr>}
-                        {logs?.map((log) => (
+                        {paginatedLogs.map((log) => (
                             <tr key={log.id}>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-subtle font-mono">{new Date(log.timestamp).toLocaleString('fr-FR')}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm"><LogLevelBadge level={log.level} /></td>
@@ -70,6 +84,36 @@ const TechnicalLogs: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="mt-6 flex items-center justify-between border-t border-border-color pt-4" role="navigation" aria-label="Pagination des logs techniques">
+                    <div className="text-sm text-text-subtle">
+                        Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} entrées
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="px-4 py-2 text-sm font-medium text-text-main bg-white border border-border-color rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+                            aria-label="Page précédente"
+                        >
+                            Précédent
+                        </button>
+                        <span className="px-4 py-2 text-sm font-medium text-text-main" aria-current="page">
+                            Page {currentPage} sur {totalPages}
+                        </span>
+                        <button
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="px-4 py-2 text-sm font-medium text-text-main bg-white border border-border-color rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+                            aria-label="Page suivante"
+                        >
+                            Suivant
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -80,6 +124,8 @@ const SecurityHistory: React.FC = () => {
     const toast = useToast();
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState<{ reason?: BlockReason, source?: string, type?: 'blocked' | 'allowed' }>({});
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 50;
 
     // Rafraîchissement automatique toutes les 5 secondes
     const { data: events, isLoading, isError, error } = useQuery<SecurityEvent[], Error>({
@@ -157,6 +203,18 @@ const SecurityHistory: React.FC = () => {
         });
     }, [events, searchTerm, filters]);
 
+    // Calcul de la pagination
+    const totalItems = filteredEvents.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const paginatedEvents = filteredEvents.slice(startIndex, endIndex);
+
+    // Réinitialiser à la page 1 quand les filtres ou la recherche changent
+    React.useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, filters]);
+
     return (
         <div>
             <div className="p-4 bg-gray-50 rounded-lg mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 border border-border-color">
@@ -207,7 +265,7 @@ const SecurityHistory: React.FC = () => {
                     <tbody className="divide-y divide-border-color">
                         {isLoading && <tr><td colSpan={5} className="text-center p-8">Chargement...</td></tr>}
                         {isError && <tr><td colSpan={5} className="text-center p-8 text-danger">{error.message}</td></tr>}
-                        {filteredEvents.map(event => (
+                        {paginatedEvents.map(event => (
                             <tr key={event.id}>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-subtle font-mono">{new Date(event.timestamp).toLocaleString('fr-FR')}</td>
                                 <td className="px-6 py-4">
@@ -249,6 +307,36 @@ const SecurityHistory: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="mt-6 flex items-center justify-between border-t border-border-color pt-4" role="navigation" aria-label="Pagination de l'historique de sécurité">
+                    <div className="text-sm text-text-subtle">
+                        Affichage de {startIndex + 1} à {Math.min(endIndex, totalItems)} sur {totalItems} événements
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="px-4 py-2 text-sm font-medium text-text-main bg-white border border-border-color rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+                            aria-label="Page précédente"
+                        >
+                            Précédent
+                        </button>
+                        <span className="px-4 py-2 text-sm font-medium text-text-main" aria-current="page">
+                            Page {currentPage} sur {totalPages}
+                        </span>
+                        <button
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="px-4 py-2 text-sm font-medium text-text-main bg-white border border-border-color rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-primary"
+                            aria-label="Page suivante"
+                        >
+                            Suivant
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

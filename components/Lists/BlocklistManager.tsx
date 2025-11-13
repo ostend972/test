@@ -5,6 +5,7 @@ import { Domain } from '../../types';
 import { Card } from '../ui/Card';
 import { DomainTable } from './DomainTable';
 import { Button } from '../ui/Button';
+import { useToast } from '../ui/Toast';
 
 // Domain validation regex (RFC 1035)
 const DOMAIN_REGEX = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9][a-z0-9-]{0,61}[a-z0-9]$/i;
@@ -40,6 +41,7 @@ const ConfirmationModal: React.FC<{
 
 export const BlocklistManager: React.FC = () => {
     const queryClient = useQueryClient();
+    const toast = useToast();
     const [newDomain, setNewDomain] = useState('');
     const [domainToDelete, setDomainToDelete] = useState<string | null>(null);
     const [deletingDomain, setDeletingDomain] = useState<string | null>(null);
@@ -55,34 +57,43 @@ export const BlocklistManager: React.FC = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['blocklist'] });
             setNewDomain('');
+            toast.showSuccess('Domaine ajouté à la liste noire');
         },
         onError: (addError: Error) => {
-            alert(`Erreur lors de l'ajout du domaine : ${addError.message}`);
+            toast.showError(`Erreur lors de l'ajout : ${addError.message}`);
         }
     });
-    
+
     const deleteMutation = useMutation({
         mutationFn: deleteBlocklistDomain,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['blocklist'] });
+            toast.showSuccess('Domaine supprimé de la liste noire');
         },
         onSettled: () => {
             setDeletingDomain(null);
         }
     });
-    
+
     const exportMutation = useMutation({
         mutationFn: exportBlocklist,
-        onError: (exportError: Error) => alert(`Erreur d'exportation: ${exportError.message}`),
+        onSuccess: () => {
+            toast.showSuccess('Liste exportée avec succès');
+        },
+        onError: (exportError: Error) => {
+            toast.showError(`Erreur d'exportation: ${exportError.message}`);
+        },
     });
 
     const importMutation = useMutation({
         mutationFn: importBlocklist,
         onSuccess: (data) => {
-            alert(data.message || 'Importation réussie');
+            toast.showSuccess(data.message || 'Importation réussie');
             queryClient.invalidateQueries({ queryKey: ['blocklist'] });
         },
-        onError: (importError: Error) => alert(`Erreur d'importation: ${importError.message}`),
+        onError: (importError: Error) => {
+            toast.showError(`Erreur d'importation: ${importError.message}`);
+        },
     });
 
     const handleAddDomain = (e: React.FormEvent) => {
@@ -90,17 +101,17 @@ export const BlocklistManager: React.FC = () => {
         const domain = newDomain.trim().toLowerCase();
 
         if (!domain) {
-            alert('Veuillez entrer un domaine');
+            toast.showWarning('Veuillez entrer un domaine');
             return;
         }
 
         if (domain.length > MAX_DOMAIN_LENGTH) {
-            alert(`Le domaine est trop long (maximum ${MAX_DOMAIN_LENGTH} caractères)`);
+            toast.showError(`Le domaine est trop long (maximum ${MAX_DOMAIN_LENGTH} caractères)`);
             return;
         }
 
         if (!DOMAIN_REGEX.test(domain)) {
-            alert('Format de domaine invalide. Exemple valide: example.com');
+            toast.showError('Format de domaine invalide. Exemple valide: example.com');
             return;
         }
 
@@ -125,13 +136,13 @@ export const BlocklistManager: React.FC = () => {
 
         // Validate file type
         if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
-            alert('Seuls les fichiers CSV sont acceptés');
+            toast.showError('Seuls les fichiers CSV sont acceptés');
             return;
         }
 
         // Validate file size
         if (file.size > MAX_FILE_SIZE) {
-            alert(`Le fichier est trop volumineux (maximum ${MAX_FILE_SIZE / 1024 / 1024} MB)`);
+            toast.showError(`Le fichier est trop volumineux (maximum ${MAX_FILE_SIZE / 1024 / 1024} MB)`);
             return;
         }
 

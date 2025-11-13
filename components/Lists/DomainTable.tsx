@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Domain } from '../../types';
 import { Button } from '../ui/Button';
 
@@ -45,7 +45,7 @@ export const DomainTable: React.FC<DomainTableProps> = ({ domains, onDelete, isL
   const paginatedDomains = filteredDomains.slice(startIndex, endIndex);
 
   // Réinitialiser à la page 1 quand la recherche change
-  React.useEffect(() => {
+  useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
 

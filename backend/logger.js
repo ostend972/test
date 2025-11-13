@@ -139,6 +139,14 @@ class Logger extends EventEmitter {
   }
 
   /**
+   * Log DEBUG
+   * Note: Debug logs are treated as INFO level for storage
+   */
+  debug(message) {
+    return this.log('INFO', message);
+  }
+
+  /**
    * Enregistre un événement de sécurité (domaine bloqué/autorisé)
    * @param {object} event
    */

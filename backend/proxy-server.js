@@ -12,6 +12,9 @@ const {
 } = require('./utils');
 const logger = require('./logger');
 const RateLimiter = require('./rate-limiter');
+const URLhausAPI = require('./urlhaus-api');
+const GeoBlocker = require('./geo-blocker');
+const BehaviorAnalyzer = require('./behavior-analyzer');
 
 /**
  * Serveur proxy HTTP/HTTPS avec filtrage
@@ -32,12 +35,29 @@ class ProxyServer {
       blockDurationMs: 60000 // blocage 1 minute
     });
 
+    // URLhaus API pour vérification temps réel
+    this.urlhausAPI = new URLhausAPI();
+
+    // Géo-blocker pour filtrage par pays
+    const config = configManager.get();
+    this.geoBlocker = new GeoBlocker(config.geoBlockedCountries || []);
+
+    // Analyseur de comportement pour détection d'activité suspecte
+    this.behaviorAnalyzer = new BehaviorAnalyzer({
+      hourlyThreshold: 500,   // 500 requêtes/heure max
+      dailyThreshold: 5000,   // 5000 requêtes/jour max
+      uniqueDomainsThreshold: 100 // 100 domaines uniques/heure max
+    });
+
     // Statistiques des menaces détectées
     this.threatStats = {
       invalidDomains: 0,
       dnsTunneling: 0,
       rateLimitHits: 0,
-      bypassAttempts: 0
+      bypassAttempts: 0,
+      urlhausBlocks: 0,
+      geoBlocks: 0,
+      suspiciousBehavior: 0
     };
   }
 
@@ -102,6 +122,11 @@ class ProxyServer {
     // Nettoyer le rate limiter
     if (this.rateLimiter) {
       this.rateLimiter.destroy();
+    }
+
+    // Nettoyer le behavior analyzer
+    if (this.behaviorAnalyzer) {
+      this.behaviorAnalyzer.destroy();
     }
 
     return new Promise((resolve) => {
@@ -398,6 +423,32 @@ class ProxyServer {
       }
     }
 
+    // 0.3. Analyse comportementale (détection de bots, scanning, activité suspecte)
+    if (clientIP && clientIP !== 'unknown') {
+      const behaviorResult = this.behaviorAnalyzer.trackRequest(clientIP, hostname);
+
+      if (behaviorResult.suspicious) {
+        this.threatStats.suspiciousBehavior++;
+        logger.warn(`⚠️ Comportement suspect détecté pour ${clientIP} (${hostname}): ${behaviorResult.reasons.join(', ')} - Sévérité: ${behaviorResult.severity}`);
+
+        // Bloquer uniquement si sévérité critique ou high
+        if (behaviorResult.severity === 'critical' || behaviorResult.severity === 'high') {
+          return {
+            blocked: true,
+            reason: `Comportement suspect (${behaviorResult.severity})`,
+            source: 'Analyse Comportementale',
+            details: behaviorResult.reasons.join(', ')
+          };
+        }
+      }
+    }
+
+    // 0.5. Géo-blocking (si activé et pays configurés)
+    if (config.enableGeoBlocking && this.geoBlocker.getBlockedCountries().length > 0 && clientIP) {
+      // Vérification asynchrone pour ne pas ralentir
+      this.checkGeoBlockingAsync(clientIP, hostname);
+    }
+
     // 1. Validation de longueur de domaine (DoS protection)
     if (!validateDomainLength(hostname)) {
       this.threatStats.invalidDomains++;
@@ -466,8 +517,58 @@ class ProxyServer {
       };
     }
 
+    // 9. Vérification temps réel via URLhaus API (si activé)
+    if (config.enableURLhausAPI !== false) { // Activé par défaut
+      // Vérification asynchrone en arrière-plan (non-bloquante)
+      this.checkURLhausAsync(hostname, clientIP);
+    }
+
     // Pas de raison de bloquer
     return { blocked: false };
+  }
+
+  /**
+   * Vérifie un domaine via URLhaus API de manière asynchrone
+   * @param {string} hostname
+   * @param {string} clientIP
+   */
+  async checkURLhausAsync(hostname, clientIP) {
+    try {
+      const result = await this.urlhausAPI.checkHost(hostname);
+
+      if (result.malicious) {
+        this.threatStats.urlhausBlocks++;
+        logger.warn(`⚠️ URLhaus API: Domaine malveillant détecté (${result.threat}): ${hostname} depuis ${clientIP || 'unknown'}`);
+
+        // Ajouter automatiquement à la blocklist custom pour blocage futur immédiat
+        try {
+          await this.blocklistManager.addCustomDomain(hostname);
+          logger.info(`Domaine ${hostname} ajouté automatiquement à la blocklist`);
+        } catch (error) {
+          // Ignorer si déjà présent
+        }
+      }
+    } catch (error) {
+      // Ignorer les erreurs silencieusement (fail-open)
+    }
+  }
+
+  /**
+   * Vérifie le géo-blocking de manière asynchrone
+   * @param {string} clientIP
+   * @param {string} hostname
+   */
+  async checkGeoBlockingAsync(clientIP, hostname) {
+    try {
+      const result = await this.geoBlocker.checkIP(clientIP);
+
+      if (result.blocked) {
+        this.threatStats.geoBlocks++;
+        logger.warn(`⚠️ Géo-blocking: ${result.reason} pour ${hostname}`);
+      }
+    } catch (error) {
+      // Ignorer les erreurs silencieusement (fail-open)
+    }
   }
 
   /**
@@ -720,6 +821,9 @@ class ProxyServer {
       activeConnections: this.activeConnections.size,
       ...logger.getStats(),
       rateLimiter: this.rateLimiter.getStats(),
+      urlhausAPI: this.urlhausAPI.getStats(),
+      geoBlocker: this.geoBlocker.getStats(),
+      behaviorAnalyzer: this.behaviorAnalyzer.getStats(),
       threats: this.threatStats
     };
   }

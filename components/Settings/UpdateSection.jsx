@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Button } from '../ui/Button.jsx';
 import { Card } from '../ui/Card.jsx';
 import { checkForUpdates, downloadUpdate, installUpdate, getUpdateInfo } from '../../services/api.js';
+import { useToast } from '../ui/Toast';
 
 /**
  * ═══════════════════════════════════════════════════════════════════
@@ -16,10 +17,12 @@ import { checkForUpdates, downloadUpdate, installUpdate, getUpdateInfo } from '.
  * - Suivre la progression du téléchargement
  */
 export default function UpdateSection() {
+  const toast = useToast();
   const [updateStatus, setUpdateStatus] = useState('idle'); // idle, checking, available, downloading, downloaded, error
   const [updateInfo, setUpdateInfo] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showInstallConfirm, setShowInstallConfirm] = useState(false);
 
   // Écouter les événements de mise à jour
   useEffect(() => {
@@ -107,9 +110,12 @@ export default function UpdateSection() {
   };
 
   const handleInstall = () => {
-    if (confirm('L\'application va redémarrer pour installer la mise à jour. Continuer ?')) {
-      installMutation.mutate();
-    }
+    setShowInstallConfirm(true);
+  };
+
+  const confirmInstall = () => {
+    setShowInstallConfirm(false);
+    installMutation.mutate();
   };
 
   return (
@@ -219,6 +225,27 @@ export default function UpdateSection() {
         <p>• Les mises à jour sont vérifiées automatiquement toutes les 24 heures</p>
         <p>• Utilise le système de mise à jour différentielle pour économiser la bande passante</p>
       </div>
+
+      {/* Modal de confirmation d'installation */}
+      {showInstallConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center" aria-modal="true" role="dialog">
+          <div className="bg-white rounded-lg p-8 m-4 max-w-md w-full shadow-xl">
+            <h2 className="text-xl font-bold mb-4">Installer la mise à jour</h2>
+            <p className="text-gray-600 mb-6">
+              L'application va redémarrer pour installer la mise à jour.
+              Assurez-vous d'avoir sauvegardé votre travail.
+            </p>
+            <div className="flex justify-end space-x-4">
+              <Button variant="secondary" onClick={() => setShowInstallConfirm(false)}>
+                Annuler
+              </Button>
+              <Button variant="primary" onClick={confirmInstall}>
+                Installer maintenant
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

@@ -4,6 +4,7 @@ import { getLogs, exportLogs, generateDiagnosticReport, getSecurityEvents, addWh
 import { Log, LogLevel, SecurityEvent, BlockReason } from '../../types';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { useToast } from '../ui/Toast';
 
 type LogTab = 'security' | 'technical';
 
@@ -76,6 +77,7 @@ const TechnicalLogs: React.FC = () => {
 
 const SecurityHistory: React.FC = () => {
     const queryClient = useQueryClient();
+    const toast = useToast();
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState<{ reason?: BlockReason, source?: string, type?: 'blocked' | 'allowed' }>({});
 
@@ -111,37 +113,37 @@ const SecurityHistory: React.FC = () => {
     const addWhitelistMutation = useMutation({
         mutationFn: (domain: string) => addWhitelistDomain(domain),
         onSuccess: () => {
-            alert('Domaine ajouté à la liste blanche.');
+            toast.showSuccess('Domaine ajouté à la liste blanche');
             queryClient.invalidateQueries({ queryKey: ['whitelist'] });
         },
-        onError: (e: Error) => alert(e.message)
+        onError: (e: Error) => toast.showError(e.message)
     });
 
     const removeWhitelistMutation = useMutation({
         mutationFn: (domain: string) => deleteWhitelistDomain(domain),
         onSuccess: () => {
-            alert('Domaine retiré de la liste blanche.');
+            toast.showSuccess('Domaine retiré de la liste blanche');
             queryClient.invalidateQueries({ queryKey: ['whitelist'] });
         },
-        onError: (e: Error) => alert(e.message)
+        onError: (e: Error) => toast.showError(e.message)
     });
 
     const addBlocklistMutation = useMutation({
         mutationFn: (domain: string) => addBlocklistDomain(domain),
         onSuccess: () => {
-            alert('Domaine ajouté à la liste noire.');
+            toast.showSuccess('Domaine ajouté à la liste noire');
             queryClient.invalidateQueries({ queryKey: ['blocklist'] });
         },
-        onError: (e: Error) => alert(e.message)
+        onError: (e: Error) => toast.showError(e.message)
     });
 
     const removeBlocklistMutation = useMutation({
         mutationFn: (domain: string) => deleteBlocklistDomain(domain),
         onSuccess: () => {
-            alert('Domaine retiré de la liste noire.');
+            toast.showSuccess('Domaine retiré de la liste noire');
             queryClient.invalidateQueries({ queryKey: ['blocklist'] });
         },
-        onError: (e: Error) => alert(e.message)
+        onError: (e: Error) => toast.showError(e.message)
     });
 
     const filteredEvents = useMemo(() => {
@@ -252,16 +254,23 @@ const SecurityHistory: React.FC = () => {
 };
 
 export const LogPage: React.FC = () => {
+    const toast = useToast();
     const [activeTab, setActiveTab] = useState<LogTab>('security');
 
     const exportMutation = useMutation({
         mutationFn: exportLogs,
-        onError: (err: Error) => alert(`Erreur d'exportation: ${err.message}`)
+        onSuccess: () => {
+            toast.showSuccess('Logs exportés avec succès');
+        },
+        onError: (err: Error) => toast.showError(`Erreur d'exportation: ${err.message}`)
     });
 
     const diagnosticMutation = useMutation({
         mutationFn: generateDiagnosticReport,
-        onError: (err: Error) => alert(`Erreur de génération du rapport: ${err.message}`)
+        onSuccess: () => {
+            toast.showSuccess('Rapport de diagnostic généré avec succès');
+        },
+        onError: (err: Error) => toast.showError(`Erreur de génération du rapport: ${err.message}`)
     });
 
     return (

@@ -41,7 +41,7 @@ export const ProtectionStatus: React.FC = () => {
                 </div>
             )}
             {isError && <p className="text-danger">Erreur lors de la récupération du statut de la protection.</p>}
-            {data && (
+            {data && Array.isArray(data.layers) && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                     {data.layers.map(layer => <ProtectionLayerItem key={layer.id} layer={layer} />)}
                 </div>

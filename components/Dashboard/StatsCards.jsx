@@ -79,23 +79,42 @@ export const StatsCards = () => {
     const { data: stats, isLoading, isError, error } = useQuery({
         queryKey: ['dashboardStats'],
         queryFn: getDashboardStats,
+        staleTime: 10000, // Les données restent fraîches pendant 10 secondes
+        refetchOnWindowFocus: true // Rafraîchir quand on revient sur la fenêtre
     });
     
-    useWebSocket('stats_update', (event) => {
-        if (event.type === 'blocked') {
-            queryClient.setQueryData(['dashboardStats'], (prevStats) => {
-                 if (!prevStats) return prevStats;
+    // WebSocket temps réel pour mises à jour instantanées
+    useWebSocket('stats_update', (updatedStats) => {
+        queryClient.setQueryData(['dashboardStats'], (prevStats) => {
+            if (!prevStats) return prevStats;
+
+            // Si c'est un événement de blocage individuel
+            if (updatedStats.type === 'blocked') {
                 return {
                     ...prevStats,
-                    blockedToday: { ...prevStats.blockedToday, value: prevStats.blockedToday.value + 1 },
+                    blockedToday: {
+                        ...prevStats.blockedToday,
+                        value: prevStats.blockedToday.value + 1
+                    },
                     totalBlocked: prevStats.totalBlocked + 1,
                     lastThreat: {
-                        domain: event.domain,
-                        timestamp: event.timestamp,
+                        domain: updatedStats.domain,
+                        timestamp: updatedStats.timestamp,
                     }
+                };
+            }
+
+            // Sinon, c'est une mise à jour complète des stats
+            return {
+                ...prevStats,
+                ...updatedStats,
+                // Fusionner les stats avancées si disponibles
+                advanced: {
+                    ...prevStats.advanced,
+                    ...updatedStats.advanced
                 }
-            });
-        }
+            };
+        });
     });
 
     if (isLoading) return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 animate-pulse">

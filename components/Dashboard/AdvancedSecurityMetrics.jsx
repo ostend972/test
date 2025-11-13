@@ -1,6 +1,7 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getDashboardStats } from '../../services/api.js';
+import { useWebSocket } from '../../hooks/useWebSocket.js';
 
 const ShieldIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -47,10 +48,28 @@ const MetricCard = ({ title, icon, stats, color = "primary" }) => {
 };
 
 export const AdvancedSecurityMetrics = () => {
+    const queryClient = useQueryClient();
     const { data, isLoading } = useQuery({
         queryKey: ['dashboardStats'],
         queryFn: getDashboardStats,
-        refetchInterval: 3000 // Rafraîchir toutes les 3 secondes
+        staleTime: 10000, // Les données restent fraîches pendant 10 secondes
+        refetchOnWindowFocus: true // Rafraîchir quand on revient sur la fenêtre
+    });
+
+    // WebSocket temps réel pour mises à jour instantanées
+    useWebSocket('stats_update', (updatedStats) => {
+        queryClient.setQueryData(['dashboardStats'], (prevStats) => {
+            if (!prevStats) return prevStats;
+            return {
+                ...prevStats,
+                ...updatedStats,
+                // Fusionner les stats avancées si disponibles
+                advanced: {
+                    ...prevStats.advanced,
+                    ...updatedStats.advanced
+                }
+            };
+        });
     });
 
     if (isLoading) {

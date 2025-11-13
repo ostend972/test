@@ -4,22 +4,47 @@ import { useEffect, useState } from 'react';
 export const useWebSocket = (event, onMessage) => {
   // In an Electron context, IPC is always available, so we can consider it "connected".
   const [isConnected, setIsConnected] = useState(true);
-  
+
   useEffect(() => {
-    // The `window.electronAPI.onDomainEvent` function is exposed by preload.js
-    // It sets up a listener for events from the main process and returns a cleanup function.
-    if (window.electronAPI && typeof window.electronAPI.onDomainEvent === 'function') {
-      const cleanup = window.electronAPI.onDomainEvent(onMessage);
-      
-      return () => {
-        cleanup();
-      };
+    // Map event names to the appropriate Electron API handlers
+    let cleanup;
+
+    if (window.electronAPI) {
+      switch (event) {
+        case 'domain_event':
+          if (typeof window.electronAPI.onDomainEvent === 'function') {
+            cleanup = window.electronAPI.onDomainEvent(onMessage);
+          }
+          break;
+
+        case 'stats_update':
+        case 'stats_updated':
+          if (typeof window.electronAPI.onStatsUpdated === 'function') {
+            cleanup = window.electronAPI.onStatsUpdated(onMessage);
+          }
+          break;
+
+        case 'new_log':
+          if (typeof window.electronAPI.onNewLog === 'function') {
+            cleanup = window.electronAPI.onNewLog(onMessage);
+          }
+          break;
+
+        default:
+          console.warn(`Unknown event type: ${event}. No handler available.`);
+          setIsConnected(false);
+          break;
+      }
+
+      if (cleanup) {
+        return cleanup;
+      }
     } else {
-        console.warn('Electron API for real-time events not found. Running in non-Electron environment?');
-        setIsConnected(false);
+      console.warn('Electron API for real-time events not found. Running in non-Electron environment?');
+      setIsConnected(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // onMessage is excluded to prevent re-subscribing on every render
+  }, [event]); // React when event type changes
 
   return { isConnected };
 };

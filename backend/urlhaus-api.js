@@ -11,6 +11,7 @@ class URLhausAPI {
     this.baseURL = 'https://urlhaus-api.abuse.ch/v1';
     this.cache = new Map(); // Cache pour éviter requêtes répétées
     this.cacheTimeout = 3600000; // 1 heure
+    this.MAX_CACHE_SIZE = 10000; // Limite de 10 000 entrées
     this.stats = {
       requests: 0,
       cacheHits: 0,
@@ -44,7 +45,13 @@ class URLhausAPI {
       // Parser la réponse
       const parsedResult = this.parseResponse(result);
 
-      // Mettre en cache
+      // Mettre en cache avec limite LRU (Least Recently Used)
+      if (this.cache.size >= this.MAX_CACHE_SIZE) {
+        // Supprimer la plus ancienne entrée (première clé du Map)
+        const firstKey = this.cache.keys().next().value;
+        this.cache.delete(firstKey);
+      }
+
       this.cache.set(hostname, {
         result: parsedResult,
         timestamp: Date.now()

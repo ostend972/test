@@ -17,7 +17,7 @@ class RateLimiter {
     this.stats = {
       totalRequests: 0,
       blockedRequests: 0,
-      uniqueIPs: new Set()
+      uniqueIPCount: 0 // Count instead of Set to avoid unbounded growth
     };
 
     // Nettoyage périodique des anciennes entrées
@@ -38,7 +38,11 @@ class RateLimiter {
 
     const now = Date.now();
     this.stats.totalRequests++;
-    this.stats.uniqueIPs.add(ip);
+
+    // Track unique IPs efficiently
+    if (!this.requests.has(ip)) {
+      this.stats.uniqueIPCount++;
+    }
 
     // Récupérer ou créer l'entrée pour cette IP
     let entry = this.requests.get(ip);

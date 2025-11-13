@@ -10,6 +10,7 @@ class GeoBlocker {
     this.blockedCountries = new Set(blockedCountries.map(c => c.toUpperCase()));
     this.cache = new Map(); // Cache IP -> pays
     this.cacheTimeout = 86400000; // 24 heures
+    this.MAX_CACHE_SIZE = 10000; // Limite de 10 000 entrées
     this.stats = {
       requests: 0,
       cacheHits: 0,
@@ -89,7 +90,12 @@ class GeoBlocker {
           : null
       };
 
-      // Mettre en cache
+      // Mettre en cache avec limite LRU
+      if (this.cache.size >= this.MAX_CACHE_SIZE) {
+        const firstKey = this.cache.keys().next().value;
+        this.cache.delete(firstKey);
+      }
+
       this.cache.set(ip, {
         result,
         timestamp: Date.now()

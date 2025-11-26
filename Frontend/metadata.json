@@ -1,0 +1,5 @@
+{
+  "name": "CalmWeb Dashboard",
+  "description": "A modern, professional security dashboard for the CalmWeb protection suite, featuring real-time statistics, threat monitoring, and proxy management.",
+  "requestFramePermissions": []
+}

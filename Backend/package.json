@@ -1,0 +1,94 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "rebuild": "electron-rebuild",
+    "start": "tsc && electron .",
+    "start:admin": "powershell -ExecutionPolicy Bypass -File ./start-admin.ps1",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ostend972/test"
+  },
+  "build": {
+    "appId": "com.calmweb.app",
+    "productName": "CalmWeb",
+    "publish": {
+      "provider": "github",
+      "owner": "ostend972",
+      "repo": "test"
+    },
+    "directories": {
+      "output": "release",
+      "app": "."
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../Frontend/dist",
+        "to": "frontend_dist"
+      },
+      {
+        "from": "../icon.ico",
+        "to": "icon.ico"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "requestedExecutionLevel": "requireAdministrator",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeader": "assets/icon.ico",
+      "installerSidebar": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "menuCategory": false,
+      "perMachine": true,
+      "deleteAppDataOnUninstall": true,
+      "displayLanguageSelector": true,
+      "language": "1036",
+      "installerLanguages": [
+        "fr_FR",
+        "en_US"
+      ],
+      "multiLanguageInstaller": false,
+      "include": "installer.nsh"
+    }
+  },
+  "keywords": [],
+  "author": "CalmWeb",
+  "description": "CalmWeb Security Dashboard Backend",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.1",
+    "electron": "^39.2.3",
+    "electron-builder": "^26.0.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@types/node-forge": "^1.3.14",
+    "better-sqlite3": "^12.4.5",
+    "bloom-filters": "^3.0.4",
+    "electron-store": "^11.0.2",
+    "electron-updater": "^6.6.2",
+    "node-forge": "^1.3.1"
+  }
+}
